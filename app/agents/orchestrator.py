@@ -15,10 +15,5 @@ class AgentOrchestrator:
                 "is_validated": bool(state.get("is_validated")),
                 "notes": state.get("validation_notes"),
             },
-            "agent_steps": [
-                {"agent": "planner", "success": bool(state.get("plan"))},
-                {"agent": "retriever", "success": bool(state.get("retrieved_context"))},
-                {"agent": "reasoner", "success": bool(state.get("answer"))},
-                {"agent": "validator", "success": bool(state.get("is_validated"))},
-            ],
+            "agent_steps": state.get("agent_steps", []),
         }

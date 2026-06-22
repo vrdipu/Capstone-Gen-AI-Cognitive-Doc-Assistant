@@ -121,12 +121,6 @@ async def ask_agent(request: AgentQuestionRequest) -> AgentAnswerResponse:
     started = time.perf_counter()
     state = run_document_assistant(request.question)
     sources = [_source_from_result(result, index) for index, result in enumerate(state.get("retrieved_context", []))]
-    steps = [
-        {"agent": "planner", "success": bool(state.get("plan"))},
-        {"agent": "retriever", "success": bool(state.get("retrieved_context"))},
-        {"agent": "reasoner", "success": bool(state.get("answer"))},
-        {"agent": "validator", "success": bool(state.get("is_validated"))},
-    ]
     return AgentAnswerResponse(
         answer=state.get("answer") or "No grounded answer was produced.",
         sources=sources,
@@ -134,7 +128,7 @@ async def ask_agent(request: AgentQuestionRequest) -> AgentAnswerResponse:
         processing_time_seconds=round(time.perf_counter() - started, 3),
         is_validated=bool(state.get("is_validated")),
         validation_notes=state.get("validation_notes"),
-        agent_steps=steps,
+        agent_steps=state.get("agent_steps", []),
     )
 
 

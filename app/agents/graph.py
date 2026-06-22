@@ -20,10 +20,12 @@ class AgentState(TypedDict, total=False):
     plan: str
     search_query: str
     retrieved_context: list[dict[str, Any]]
+    reasoning_output: str
     answer: str
     validation_notes: str
     is_validated: bool
     retry_count: int
+    agent_steps: list[dict[str, Any]]
     error: str
 
 
@@ -66,6 +68,14 @@ def _json_from_model(text: str) -> dict[str, Any]:
         return {}
 
 
+def _with_step(state: AgentState, agent: str, success: bool, detail: str = "") -> AgentState:
+    steps = list(state.get("agent_steps", []))
+    step: dict[str, Any] = {"agent": agent, "success": success}
+    if detail:
+        step["detail"] = detail
+    return {**state, "agent_steps": steps + [step]}
+
+
 def planner_node(state: AgentState) -> AgentState:
     client = OllamaChatClient()
     question = state.get("question", "").strip()
@@ -81,14 +91,16 @@ User question:
     parsed = _json_from_model(raw)
     search_query = str(parsed.get("search_query") or question).strip()
     plan = str(parsed.get("plan") or "Retrieve relevant source chunks, answer using only that context, then validate claims.")
-    return {**state, "plan": plan, "search_query": search_query}
+    updated: AgentState = {**state, "plan": plan, "search_query": search_query}
+    return _with_step(updated, "planner", bool(search_query), plan)
 
 
 def retriever_node(state: AgentState) -> AgentState:
     query = state.get("search_query") or state.get("question", "")
     vector_store = VectorStoreService()
     context = vector_store.query(str(query), k=3)
-    return {**state, "retrieved_context": context}
+    updated: AgentState = {**state, "retrieved_context": context}
+    return _with_step(updated, "retriever", bool(context), f"retrieved {len(context)} context chunks")
 
 
 def reasoning_node(state: AgentState) -> AgentState:
@@ -98,7 +110,8 @@ def reasoning_node(state: AgentState) -> AgentState:
     )
     extracted_answer = _extract_direct_answer(state.get("question", ""), context)
     if extracted_answer:
-        return {**state, "answer": extracted_answer}
+        updated: AgentState = {**state, "reasoning_output": extracted_answer}
+        return _with_step(updated, "reasoner", True, "direct evidence extracted")
 
     client = OllamaChatClient()
     prompt = f"""
@@ -114,8 +127,29 @@ Question:
 Context:
 {context or "No context retrieved."}
 """
-    answer = client.generate(prompt)
-    return {**state, "answer": answer}
+    reasoning_output = client.generate(prompt)
+    updated = {**state, "reasoning_output": reasoning_output}
+    return _with_step(updated, "reasoner", bool(reasoning_output), "LLM reasoning completed")
+
+
+def responder_node(state: AgentState) -> AgentState:
+    reasoning_output = state.get("reasoning_output") or state.get("answer") or ""
+    context = "\n\n".join(
+        f"Source: {item.get('source', 'unknown')}\nContent: {item.get('content', '')}"
+        for item in state.get("retrieved_context", [])
+    )
+    if not reasoning_output.strip():
+        updated: AgentState = {**state, "answer": "No grounded answer was produced from the retrieved context."}
+        return _with_step(updated, "responder", False, "empty reasoning output")
+
+    if _answer_has_grounded_claims(reasoning_output, context) or "source:" in reasoning_output.lower():
+        updated = {**state, "answer": reasoning_output.strip()}
+        return _with_step(updated, "responder", True, "formatted grounded response")
+
+    sources = sorted({str(item.get("source", "unknown")) for item in state.get("retrieved_context", []) if item.get("source")})
+    source_note = f"\n\nSources: {', '.join(sources)}" if sources else ""
+    updated = {**state, "answer": f"{reasoning_output.strip()}{source_note}"}
+    return _with_step(updated, "responder", True, "source references attached")
 
 
 def _extract_direct_answer(question: str, context: str) -> str | None:
@@ -136,7 +170,7 @@ def validator_node(state: AgentState) -> AgentState:
     )
     if _answer_has_grounded_claims(state.get("answer", ""), context):
         return {
-            **state,
+            **_with_step(state, "validator", True, "deterministic evidence check passed"),
             "is_validated": True,
             "validation_notes": "Deterministic evidence check passed against retrieved context.",
         }
@@ -159,7 +193,8 @@ Context:
     parsed = _json_from_model(raw)
     is_validated = _coerce_bool(parsed.get("isValidated", False))
     notes = str(parsed.get("notes") or raw)
-    return {**state, "is_validated": is_validated, "validation_notes": notes}
+    updated = {**state, "is_validated": is_validated, "validation_notes": notes}
+    return _with_step(updated, "validator", is_validated, notes[:160])
 
 
 def _coerce_bool(value: Any) -> bool:
@@ -221,7 +256,8 @@ Validation notes:
     raw = client.generate(prompt, temperature=0.2)
     parsed = _json_from_model(raw)
     rewritten = str(parsed.get("search_query") or state.get("question", "")).strip()
-    return {**state, "search_query": rewritten, "retry_count": retry_count}
+    updated = {**state, "search_query": rewritten, "retry_count": retry_count}
+    return _with_step(updated, "query_rewriter", bool(rewritten), f"retry {retry_count}")
 
 
 def fallback_node(state: AgentState) -> AgentState:
@@ -230,7 +266,8 @@ def fallback_node(state: AgentState) -> AgentState:
         "I could not fully validate a grounded answer after the maximum retrieval attempts. "
         f"Validation notes: {notes}"
     )
-    return {**state, "answer": fallback_answer, "is_validated": False}
+    updated = {**state, "answer": fallback_answer, "is_validated": False}
+    return _with_step(updated, "fallback", True, "max validation retries reached")
 
 
 def route_after_validation(state: AgentState) -> str:
@@ -246,6 +283,7 @@ def build_graph():
     graph.add_node("planner", planner_node)
     graph.add_node("retriever", retriever_node)
     graph.add_node("reasoning", reasoning_node)
+    graph.add_node("responder", responder_node)
     graph.add_node("validator", validator_node)
     graph.add_node("rewrite_query", rewrite_query_node)
     graph.add_node("fallback", fallback_node)
@@ -253,7 +291,8 @@ def build_graph():
     graph.set_entry_point("planner")
     graph.add_edge("planner", "retriever")
     graph.add_edge("retriever", "reasoning")
-    graph.add_edge("reasoning", "validator")
+    graph.add_edge("reasoning", "responder")
+    graph.add_edge("responder", "validator")
     graph.add_conditional_edges(
         "validator",
         route_after_validation,
@@ -270,6 +309,7 @@ def run_document_assistant(question: str) -> AgentState:
         "retry_count": 0,
         "is_validated": False,
         "retrieved_context": [],
+        "agent_steps": [],
     }
     try:
         return build_graph().invoke(initial_state)

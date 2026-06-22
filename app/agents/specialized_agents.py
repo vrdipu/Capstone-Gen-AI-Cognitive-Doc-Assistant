@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.base_agent import AgentResult
-from app.agents.graph import planner_node, reasoning_node, retriever_node, validator_node
+from app.agents.graph import planner_node, reasoning_node, responder_node, retriever_node, validator_node
 
 
 class PlannerAgent:
@@ -32,14 +32,20 @@ class ReasonerAgent:
                 "retrieved_context": payload.get("retrieved_context", []),
             }
         )
-        return AgentResult(True, state.get("answer", ""))
+        return AgentResult(True, state.get("reasoning_output", ""))
 
 
 class ResponderAgent:
     name = "responder"
 
     def process(self, payload: dict[str, Any]) -> AgentResult:
-        return AgentResult(True, payload.get("answer") or payload.get("analysis") or "")
+        state = responder_node(
+            {
+                "reasoning_output": payload.get("answer") or payload.get("analysis") or "",
+                "retrieved_context": payload.get("retrieved_context", []),
+            }
+        )
+        return AgentResult(True, state.get("answer", ""))
 
 
 class ValidatorAgent:
