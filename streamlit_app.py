@@ -7,6 +7,8 @@ import requests
 import streamlit as st
 
 
+API_HTTP = requests.Session()
+API_HTTP.trust_env = False
 CONFIGURED_API_BASE_URL = os.environ.get("API_BASE_URL", "").rstrip("/")
 API_BASE_URL_CANDIDATES = tuple(
     dict.fromkeys(
@@ -14,6 +16,7 @@ API_BASE_URL_CANDIDATES = tuple(
         for url in (
             CONFIGURED_API_BASE_URL,
             "http://api:8000",
+            "http://host.docker.internal:8000",
             "http://localhost:8000",
         )
         if url
@@ -41,7 +44,7 @@ def _probe_api_base_url() -> str | None:
     candidates = (cached_url, *API_BASE_URL_CANDIDATES) if cached_url else API_BASE_URL_CANDIDATES
     for api_base_url in dict.fromkeys(url for url in candidates if url):
         try:
-            response = requests.get(f"{api_base_url}/health", timeout=5)
+            response = API_HTTP.get(f"{api_base_url}/health", timeout=5)
             if response.status_code == 200:
                 st.session_state.api_base_url = api_base_url
                 return api_base_url
@@ -63,7 +66,7 @@ def _upload_documents(files: list[Any]) -> None:
     failures: list[str] = []
     for uploaded_file in files:
         try:
-            response = requests.post(
+            response = API_HTTP.post(
                 f"{_api_base_url()}/documents/upload",
                 files={"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)},
                 timeout=120,
@@ -83,7 +86,7 @@ def _upload_documents(files: list[Any]) -> None:
 
 
 def _ask_agent(question: str) -> str:
-    response = requests.post(f"{_api_base_url()}/agents/ask", json={"question": question, "top_k": 3}, timeout=180)
+    response = API_HTTP.post(f"{_api_base_url()}/agents/ask", json={"question": question, "top_k": 3}, timeout=180)
     response.raise_for_status()
     result = response.json()
     answer = result.get("answer") or "No answer returned."
@@ -105,6 +108,8 @@ def main() -> None:
     api_healthy = api_base_url is not None
     if not api_healthy:
         st.warning("API is not reachable. Tried: " + ", ".join(API_BASE_URL_CANDIDATES))
+    else:
+        st.caption(f"API connected: {api_base_url}")
 
     with st.sidebar:
         st.header("Documents")
