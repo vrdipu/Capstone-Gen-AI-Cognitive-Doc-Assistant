@@ -8,6 +8,11 @@ __pycache__
 .ruff_cache
 .env
 chroma_db
+data
+logs
+GenAI-Document-Assistant-Development-Guide.pdf
+guide-extracted.txt
 *.log
 Dockerfile
+Dockerfile.streamlit
 .dockerignore

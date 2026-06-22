@@ -1,25 +1,42 @@
 services:
-  document-assistant:
+  api:
     build:
       context: .
       dockerfile: Dockerfile
     image: capstone-agentic-rag:latest
-    container_name: capstone-agentic-rag
+    container_name: capstone-agentic-rag-api
     ports:
-      - "8501:8501"
+      - "8000:8000"
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2:3b}
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
-      CHROMA_DB_DIR: /app/chroma_db
+      CHROMA_PERSIST_DIR: /app/data/vectorstore
+      UPLOAD_DIR: /app/data/uploads
+      DEBUG: "False"
       ANONYMIZED_TELEMETRY: "False"
       CHROMA_TELEMETRY: "False"
       MAX_GRAPH_RETRIES: ${MAX_GRAPH_RETRIES:-3}
     volumes:
-      - chroma-data:/app/chroma_db
+      - api-data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    image: capstone-agentic-rag-frontend:latest
+    container_name: capstone-agentic-rag-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      API_BASE_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
-  chroma-data:
+  api-data:

@@ -1,25 +1,45 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import List
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Environment-backed application settings."""
 
+    app_name: str = Field(default="GenAI Document Assistant", alias="APP_NAME")
+    app_env: str = Field(default="development", alias="APP_ENV")
+    debug: bool = Field(default=True, alias="DEBUG")
+    api_host: str = Field(default="0.0.0.0", alias="API_HOST")
+    api_port: int = Field(default=8000, alias="API_PORT", ge=1, le=65535)
     ollama_base_url: str = Field(
         default="http://localhost:11434",
         alias="OLLAMA_BASE_URL",
         description="Base URL for the local Ollama HTTP API.",
     )
     chroma_db_dir: Path = Field(
-        default=Path("./chroma_db"),
-        alias="CHROMA_DB_DIR",
+        default=Path("./data/vectorstore"),
+        validation_alias=AliasChoices("CHROMA_DB_DIR", "CHROMA_PERSIST_DIR"),
         description="Directory used by persistent ChromaDB storage.",
     )
-    ollama_chat_model: str = Field(default="llama3.2:3b", alias="OLLAMA_CHAT_MODEL")
-    ollama_embedding_model: str = Field(default="nomic-embed-text", alias="OLLAMA_EMBEDDING_MODEL")
+    chroma_collection_name: str = Field(default="documents", alias="CHROMA_COLLECTION_NAME")
+    upload_dir: Path = Field(default=Path("./data/uploads"), alias="UPLOAD_DIR")
+    max_file_size_mb: int = Field(default=10, alias="MAX_FILE_SIZE_MB", ge=1, le=200)
+    allowed_extensions: str = Field(default="pdf,txt,csv,xlsx,xls,docx,json,yaml,yml", alias="ALLOWED_EXTENSIONS")
+    chunk_size: int = Field(default=1000, alias="CHUNK_SIZE", ge=100, le=4000)
+    chunk_overlap: int = Field(default=150, alias="CHUNK_OVERLAP", ge=0, le=1000)
+    top_k_results: int = Field(default=3, alias="TOP_K_RESULTS", ge=1, le=20)
+    llm_provider: str = Field(default="ollama", alias="LLM_PROVIDER")
+    ollama_chat_model: str = Field(
+        default="llama3.2:3b",
+        validation_alias=AliasChoices("OLLAMA_CHAT_MODEL", "OLLAMA_MODEL"),
+    )
+    ollama_embedding_model: str = Field(
+        default="nomic-embed-text",
+        validation_alias=AliasChoices("OLLAMA_EMBEDDING_MODEL", "EMBEDDING_MODEL"),
+    )
     max_graph_retries: int = Field(default=3, alias="MAX_GRAPH_RETRIES", ge=1, le=10)
 
     model_config = SettingsConfigDict(
@@ -41,6 +61,29 @@ class Settings(BaseSettings):
     @classmethod
     def expand_chroma_dir(cls, value: Path) -> Path:
         return value.expanduser()
+
+    @field_validator("upload_dir")
+    @classmethod
+    def expand_upload_dir(cls, value: Path) -> Path:
+        return value.expanduser()
+
+    @property
+    def allowed_extensions_list(self) -> List[str]:
+        return [extension.strip().lower().lstrip(".") for extension in self.allowed_extensions.split(",")]
+
+    @property
+    def max_file_size_bytes(self) -> int:
+        return self.max_file_size_mb * 1024 * 1024
+
+    @property
+    def upload_path(self) -> Path:
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        return self.upload_dir
+
+    @property
+    def vectorstore_path(self) -> Path:
+        self.chroma_db_dir.mkdir(parents=True, exist_ok=True)
+        return self.chroma_db_dir
 
 
 @lru_cache(maxsize=1)

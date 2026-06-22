@@ -8,10 +8,11 @@ from typing import Any, BinaryIO
 
 import pandas as pd
 import yaml
+from docx import Document
 from pypdf import PdfReader
 
 
-SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".csv", ".xlsx", ".json", ".yaml", ".yml"}
+SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".csv", ".xlsx", ".xls", ".docx", ".json", ".yaml", ".yml"}
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,21 @@ def _parse_xlsx(data: bytes) -> str:
         raise DocumentParsingError(f"XLSX parsing failed: {exc}") from exc
 
 
+def _parse_docx(data: bytes) -> str:
+    try:
+        document = Document(BytesIO(data))
+        paragraphs = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
+        table_rows = []
+        for table in document.tables:
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if cells:
+                    table_rows.append(" | ".join(cells))
+        return _clean_text("\n".join(paragraphs + table_rows))
+    except Exception as exc:
+        raise DocumentParsingError(f"DOCX parsing failed: {exc}") from exc
+
+
 def _parse_json(data: bytes) -> str:
     try:
         loaded = json.loads(_decode_text(data))
@@ -129,6 +145,8 @@ def parse_uploaded_file(file_obj: BinaryIO | Any) -> ParsedDocument:
         ".txt": _parse_txt,
         ".csv": _parse_csv,
         ".xlsx": _parse_xlsx,
+        ".xls": _parse_xlsx,
+        ".docx": _parse_docx,
         ".json": _parse_json,
         ".yaml": _parse_yaml,
         ".yml": _parse_yaml,

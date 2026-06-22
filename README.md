@@ -1,91 +1,82 @@
 # Capstone-Gen-AI-Cognitive-Doc-Assistant
 
-Generative AI-powered document assistant using Streamlit, LangGraph, local Ollama models, and persistent ChromaDB vector search.
+Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, Ollama, LiteLLM, and persistent ChromaDB vector search.
 
 ## Architecture
 
-- `main.py`: Streamlit dashboard with bounded sliding-window chat history.
-- `app/core/config.py`: Pydantic settings for environment variables.
-- `app/services/ingestion.py`: Robust parsing for PDF, TXT, CSV, XLSX, JSON, YAML, and YML.
-- `app/services/vector_store.py`: ChromaDB persistence with Ollama `nomic-embed-text` embeddings and overlapping recursive chunks.
-- `app/agents/graph.py`: LangGraph planner, retriever, reasoning, validator, retry router, query rewrite, and fallback nodes.
+- `main.py`: FastAPI backend on port `8000`.
+- `streamlit_app.py`: Streamlit frontend on port `8501`.
+- `app/api/`: Pydantic API models and route handlers.
+- `app/services/ingestion.py`: Robust parsing for PDF, TXT, CSV, XLS, XLSX, DOCX, JSON, YAML, and YML.
+- `app/services/vector_store.py`: ChromaDB persistence with Ollama `nomic-embed-text` embeddings.
+- `app/services/rag_pipeline.py`: RAG facade over the agent graph.
+- `app/agents/graph.py`: LangGraph planner, retriever, reasoner, validator, retry router, and fallback node.
+- `app/utils/`: Input validation, rate limiting, and API exception handling.
+- `k8s/`: Kubernetes manifests.
 
 ## Prerequisites
 
-- Python `3.11` is recommended for native local installs.
-- Docker Desktop or Docker Engine is required for container deployment.
-- Ollama must run on the host machine with these models:
+- Python `3.11` for native local installs.
+- Ollama running locally with:
 
-```powershell
+```bash
 ollama pull llama3.2:3b
 ollama pull nomic-embed-text
 ```
 
-## Windows Local Setup
+Windows note: Python `3.12` can require Microsoft C++ Build Tools for Chroma native dependencies. Use Python `3.11` or Docker.
 
-Create and activate a virtual environment:
+## Windows Local Setup
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
 
-Start Ollama locally and pull the required models:
-
-```powershell
-ollama serve
-ollama pull llama3.2:3b
-ollama pull nomic-embed-text
-```
-
-If `ollama serve` is already running as a background service, only run the two `ollama pull` commands.
-
-Optional environment configuration:
-
-```powershell
 $env:OLLAMA_BASE_URL="http://localhost:11434"
-$env:CHROMA_DB_DIR="./chroma_db"
-$env:OLLAMA_CHAT_MODEL="llama3.2:3b"
-$env:OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
-$env:MAX_GRAPH_RETRIES="3"
+$env:CHROMA_PERSIST_DIR="./data/vectorstore"
+$env:UPLOAD_DIR="./data/uploads"
+
+python main.py
 ```
 
-Run the dashboard:
+In another terminal:
 
 ```powershell
-streamlit run main.py
+.\.venv\Scripts\Activate.ps1
+$env:API_BASE_URL="http://localhost:8000"
+streamlit run streamlit_app.py
 ```
-
-Open the local Streamlit URL, upload supported documents from the sidebar, index them, and ask questions in the chat box.
-
-Note for Windows: Python `3.12` may try to compile `chroma-hnswlib` and fail unless Microsoft C++ Build Tools are installed. Use Python `3.11` for the native local setup, or run Docker.
 
 ## macOS Local Setup
-
-Install Python and Ollama:
 
 ```bash
 brew install python@3.11 ollama
 ollama serve
 ollama pull llama3.2:3b
 ollama pull nomic-embed-text
-```
 
-Create the app environment:
-
-```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-streamlit run main.py
+
+export OLLAMA_BASE_URL=http://localhost:11434
+export CHROMA_PERSIST_DIR=./data/vectorstore
+export UPLOAD_DIR=./data/uploads
+python main.py
+```
+
+In another terminal:
+
+```bash
+source .venv/bin/activate
+export API_BASE_URL=http://localhost:8000
+streamlit run streamlit_app.py
 ```
 
 ## Linux Local Setup
-
-Install Python, venv support, and Ollama:
 
 ```bash
 sudo apt-get update
@@ -94,75 +85,101 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama serve
 ollama pull llama3.2:3b
 ollama pull nomic-embed-text
-```
 
-Create the app environment:
-
-```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-streamlit run main.py
+
+export OLLAMA_BASE_URL=http://localhost:11434
+export CHROMA_PERSIST_DIR=./data/vectorstore
+export UPLOAD_DIR=./data/uploads
+python main.py
 ```
 
-## Git Automation Template
-
-Each development step used this terminal automation pattern:
-
-```powershell
-git add <changed-files>
-git commit -m "Dipu VR : Capstone Project Gen AI Apllication - Step [X]: [Step Title]"
-git push
-```
-
-## Production Port
-
-The Streamlit app listens on port `8501` by default.
-
-## Docker Deployment
-
-Build the production image:
-
-```powershell
-docker build -t capstone-agentic-rag:latest .
-```
-
-Run the container while using Ollama from the host machine:
-
-```powershell
-docker run --rm -p 8501:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 -v ${PWD}\chroma_db:/app/chroma_db capstone-agentic-rag:latest
-```
-
-Linux users can use this host gateway flag when running with plain Docker:
+In another terminal:
 
 ```bash
-docker run --rm -p 8501:8501 --add-host=host.docker.internal:host-gateway -e OLLAMA_BASE_URL=http://host.docker.internal:11434 -v "$(pwd)/chroma_db:/app/chroma_db" capstone-agentic-rag:latest
+source .venv/bin/activate
+export API_BASE_URL=http://localhost:8000
+streamlit run streamlit_app.py
 ```
 
-## Docker Compose Deployment
+## API Checks
 
-Start the application:
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/docs
+```
+
+Upload:
+
+```bash
+curl -X POST "http://localhost:8000/documents/upload" -F "file=@test.pdf"
+```
+
+Ask:
+
+```bash
+curl -X POST "http://localhost:8000/agents/ask" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is the main topic?","top_k":3,"enable_validation":true}'
+```
+
+## Docker Build
+
+```powershell
+docker build -t capstone-agentic-rag:latest -f Dockerfile .
+docker build -t capstone-agentic-rag-frontend:latest -f Dockerfile.streamlit .
+```
+
+Plain Docker API run on Windows/macOS:
+
+```powershell
+docker run --rm -p 8000:8000 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 -v ${PWD}\data:/app/data capstone-agentic-rag:latest
+```
+
+Plain Docker API run on Linux:
+
+```bash
+docker run --rm -p 8000:8000 --add-host=host.docker.internal:host-gateway -e OLLAMA_BASE_URL=http://host.docker.internal:11434 -v "$(pwd)/data:/app/data" capstone-agentic-rag:latest
+```
+
+## Docker Compose
 
 ```powershell
 docker compose up --build -d
-```
-
-Check status and logs:
-
-```powershell
 docker compose ps
-docker compose logs -f document-assistant
+docker compose logs -f api
+docker compose logs -f frontend
 ```
 
-Stop the application:
+Open:
+
+```text
+API: http://localhost:8000/docs
+UI:  http://localhost:8501
+```
+
+Stop:
 
 ```powershell
 docker compose down
 ```
 
-Then open:
+## Kubernetes
 
-```text
-http://localhost:8501
+```bash
+sh scripts/docker-build.sh
+kubectl apply -k k8s/
+kubectl get pods -n genai-assistant
+kubectl get svc -n genai-assistant
+```
+
+The frontend service uses NodePort `30501`.
+
+Cleanup:
+
+```bash
+sh scripts/k8s-cleanup.sh
 ```

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: genai-config
+  namespace: genai-assistant
+data:
+  APP_ENV: "production"
+  DEBUG: "False"
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+  OLLAMA_CHAT_MODEL: "llama3.2:3b"
+  OLLAMA_EMBEDDING_MODEL: "nomic-embed-text"
+  CHROMA_PERSIST_DIR: "/app/data/vectorstore"
+  UPLOAD_DIR: "/app/data/uploads"
+  MAX_GRAPH_RETRIES: "3"

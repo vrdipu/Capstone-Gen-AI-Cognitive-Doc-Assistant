@@ -1,0 +1,10 @@
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - pvc.yaml
+  - api-deployment.yaml
+  - frontend-deployment.yaml
+  - ollama-deployment.yaml
+  - ingress.yaml
+  - hpa.yaml

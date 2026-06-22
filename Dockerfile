@@ -18,12 +18,15 @@ FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
-    STREAMLIT_SERVER_PORT=8501 \
     ANONYMIZED_TELEMETRY=False \
     CHROMA_TELEMETRY=False \
     OLLAMA_BASE_URL=http://host.docker.internal:11434 \
-    CHROMA_DB_DIR=/app/chroma_db
+    CHROMA_PERSIST_DIR=/app/data/vectorstore \
+    UPLOAD_DIR=/app/data/uploads \
+    APP_ENV=production \
+    DEBUG=False \
+    API_HOST=0.0.0.0 \
+    API_PORT=8000
 
 WORKDIR /app
 
@@ -39,16 +42,17 @@ RUN python -m pip install --no-cache-dir --no-index --find-links=/wheels -r requ
 
 COPY app ./app
 COPY main.py ./main.py
+COPY streamlit_app.py ./streamlit_app.py
 COPY README.md ./README.md
 
-RUN mkdir -p /app/chroma_db \
+RUN mkdir -p /app/data/uploads /app/data/vectorstore /app/logs \
     && chown -R appuser:appuser /app
 
 USER appuser
 
-EXPOSE 8501
+EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["streamlit", "run", "main.py"]
+CMD ["python", "main.py"]

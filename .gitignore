@@ -23,7 +23,12 @@ env/
 
 # Runtime data
 chroma_db/
+data/uploads/
+data/vectorstore/
+logs/
 *.log
+GenAI-Document-Assistant-Development-Guide.pdf
+guide-extracted.txt
 
 # Streamlit
 .streamlit/secrets.toml

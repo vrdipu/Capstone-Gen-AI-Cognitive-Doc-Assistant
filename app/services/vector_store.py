@@ -19,9 +19,6 @@ from app.services.ingestion import ParsedDocument
 
 
 LOGGER = logging.getLogger(__name__)
-COLLECTION_NAME = "document_assistant_sources"
-
-
 class VectorStoreError(RuntimeError):
     """Raised when vector persistence or retrieval fails."""
 
@@ -58,19 +55,19 @@ class OllamaEmbeddingClient:
 class VectorStoreService:
     def __init__(self) -> None:
         settings = get_settings()
-        settings.chroma_db_dir.mkdir(parents=True, exist_ok=True)
+        settings.vectorstore_path.mkdir(parents=True, exist_ok=True)
         self.client = chromadb.PersistentClient(
-            path=str(settings.chroma_db_dir),
+            path=str(settings.vectorstore_path),
             settings=ChromaSettings(anonymized_telemetry=False),
         )
         self.collection: Collection = self.client.get_or_create_collection(
-            name=COLLECTION_NAME,
+            name=settings.chroma_collection_name,
             metadata={"hnsw:space": "cosine"},
         )
         self.embedding_client = OllamaEmbeddingClient()
         self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=150,
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
             separators=["\n\n", "\n", ". ", " ", ""],
         )
 
@@ -99,13 +96,14 @@ class VectorStoreService:
             LOGGER.exception("Failed to add document %s", document.source_name)
             raise VectorStoreError(f"Failed to add document {document.source_name}: {exc}") from exc
 
-    def query(self, query_text: str, k: int = 3) -> list[dict[str, Any]]:
+    def query(self, query_text: str, k: int | None = None) -> list[dict[str, Any]]:
         try:
             if not query_text.strip():
                 raise VectorStoreError("Query text cannot be empty")
+            top_k = k or get_settings().top_k_results
             query_embedding = self.embedding_client.embed([query_text])[0]
             available_count = self.collection.count()
-            n_results = min(max(1, k), max(1, available_count))
+            n_results = min(max(1, top_k), max(1, available_count))
             results = self.collection.query(
                 query_embeddings=[query_embedding],
                 n_results=n_results,
