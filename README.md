@@ -62,3 +62,23 @@ git push
 ## Production Port
 
 The Streamlit app listens on port `8501` by default.
+
+## Docker Deployment
+
+Build the production image:
+
+```powershell
+docker build -t capstone-agentic-rag:latest .
+```
+
+Run the container while using Ollama from the host machine:
+
+```powershell
+docker run --rm -p 8501:8501 -e OLLAMA_BASE_URL=http://host.docker.internal:11434 -v ${PWD}\chroma_db:/app/chroma_db capstone-agentic-rag:latest
+```
+
+Then open:
+
+```text
+http://localhost:8501
+```

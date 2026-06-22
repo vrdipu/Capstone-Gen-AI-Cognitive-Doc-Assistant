@@ -59,7 +59,7 @@ def _answer_prompt(prompt: str) -> str:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Agentic RAG Document Assistant", page_icon="AI", layout="wide")
+    st.set_page_config(page_title="Agentic RAG Document Assistant", page_icon=":material/description:", layout="wide")
     _initialize_state()
 
     st.title("Agentic RAG Document Assistant")
