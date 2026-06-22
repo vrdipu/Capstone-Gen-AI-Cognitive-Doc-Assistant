@@ -7,13 +7,25 @@ import requests
 import streamlit as st
 
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000").rstrip("/")
+CONFIGURED_API_BASE_URL = os.environ.get("API_BASE_URL", "").rstrip("/")
+API_BASE_URL_CANDIDATES = tuple(
+    dict.fromkeys(
+        url.rstrip("/")
+        for url in (
+            CONFIGURED_API_BASE_URL,
+            "http://api:8000",
+            "http://localhost:8000",
+        )
+        if url
+    )
+)
 MAX_VISIBLE_MESSAGES = 12
 
 
 def _initialize_state() -> None:
     st.session_state.setdefault("messages", [])
     st.session_state.setdefault("indexed_files", [])
+    st.session_state.setdefault("api_base_url", None)
 
 
 def _visible_messages() -> list[dict[str, str]]:
@@ -24,12 +36,26 @@ def _append_message(role: str, content: str) -> None:
     st.session_state.messages.append({"role": role, "content": content})
 
 
-def _check_api_health() -> bool:
-    try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=5)
-        return response.status_code == 200
-    except requests.RequestException:
-        return False
+def _probe_api_base_url() -> str | None:
+    cached_url = st.session_state.get("api_base_url")
+    candidates = (cached_url, *API_BASE_URL_CANDIDATES) if cached_url else API_BASE_URL_CANDIDATES
+    for api_base_url in dict.fromkeys(url for url in candidates if url):
+        try:
+            response = requests.get(f"{api_base_url}/health", timeout=5)
+            if response.status_code == 200:
+                st.session_state.api_base_url = api_base_url
+                return api_base_url
+        except requests.RequestException:
+            continue
+    st.session_state.api_base_url = None
+    return None
+
+
+def _api_base_url() -> str:
+    api_base_url = st.session_state.get("api_base_url") or _probe_api_base_url()
+    if not api_base_url:
+        raise RuntimeError("API is not reachable. Tried: " + ", ".join(API_BASE_URL_CANDIDATES))
+    return api_base_url
 
 
 def _upload_documents(files: list[Any]) -> None:
@@ -38,7 +64,7 @@ def _upload_documents(files: list[Any]) -> None:
     for uploaded_file in files:
         try:
             response = requests.post(
-                f"{API_BASE_URL}/documents/upload",
+                f"{_api_base_url()}/documents/upload",
                 files={"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)},
                 timeout=120,
             )
@@ -57,7 +83,7 @@ def _upload_documents(files: list[Any]) -> None:
 
 
 def _ask_agent(question: str) -> str:
-    response = requests.post(f"{API_BASE_URL}/agents/ask", json={"question": question, "top_k": 3}, timeout=180)
+    response = requests.post(f"{_api_base_url()}/agents/ask", json={"question": question, "top_k": 3}, timeout=180)
     response.raise_for_status()
     result = response.json()
     answer = result.get("answer") or "No answer returned."
@@ -75,9 +101,10 @@ def main() -> None:
     _initialize_state()
 
     st.title("GenAI Document Assistant")
-    api_healthy = _check_api_health()
+    api_base_url = _probe_api_base_url()
+    api_healthy = api_base_url is not None
     if not api_healthy:
-        st.warning(f"API is not reachable at {API_BASE_URL}")
+        st.warning("API is not reachable. Tried: " + ", ".join(API_BASE_URL_CANDIDATES))
 
     with st.sidebar:
         st.header("Documents")
