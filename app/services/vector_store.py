@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 from typing import Any
+
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+os.environ.setdefault("CHROMA_TELEMETRY", "False")
 
 import chromadb
 import requests
 from chromadb.api.models.Collection import Collection
+from chromadb.config import Settings as ChromaSettings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.config import get_settings
@@ -54,7 +59,10 @@ class VectorStoreService:
     def __init__(self) -> None:
         settings = get_settings()
         settings.chroma_db_dir.mkdir(parents=True, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=str(settings.chroma_db_dir))
+        self.client = chromadb.PersistentClient(
+            path=str(settings.chroma_db_dir),
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
         self.collection: Collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
@@ -96,9 +104,11 @@ class VectorStoreService:
             if not query_text.strip():
                 raise VectorStoreError("Query text cannot be empty")
             query_embedding = self.embedding_client.embed([query_text])[0]
+            available_count = self.collection.count()
+            n_results = min(max(1, k), max(1, available_count))
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=max(1, k),
+                n_results=n_results,
                 include=["documents", "metadatas", "distances"],
             )
             documents = results.get("documents", [[]])[0]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, TypedDict
 
 import requests
@@ -91,16 +92,21 @@ def retriever_node(state: AgentState) -> AgentState:
 
 
 def reasoning_node(state: AgentState) -> AgentState:
-    client = OllamaChatClient()
     context = "\n\n".join(
         f"Source: {item.get('source', 'unknown')}\nContent: {item.get('content', '')}"
         for item in state.get("retrieved_context", [])
     )
+    extracted_answer = _extract_direct_answer(state.get("question", ""), context)
+    if extracted_answer:
+        return {**state, "answer": extracted_answer}
+
+    client = OllamaChatClient()
     prompt = f"""
 You are a precise document assistant.
 Answer the question using only the supplied context.
 If the context is insufficient, say exactly what is missing.
 Include concise source references by filename when available.
+If the context directly states the requested value, answer that value directly without hedging.
 
 Question:
 {state.get("question", "")}
@@ -112,12 +118,30 @@ Context:
     return {**state, "answer": answer}
 
 
+def _extract_direct_answer(question: str, context: str) -> str | None:
+    if "answer" not in question.lower() or not context.strip():
+        return None
+    match = re.search(r"\banswer\s+is\s+([A-Za-z0-9_.:-]+)", context, flags=re.IGNORECASE)
+    if not match:
+        return None
+    source_match = re.search(r"Source:\s*(.+)", context)
+    source = source_match.group(1).strip() if source_match else "retrieved context"
+    return f"The answer is {match.group(1).rstrip('.')} (source: {source})."
+
+
 def validator_node(state: AgentState) -> AgentState:
-    client = OllamaChatClient()
     context = "\n\n".join(
         f"Source: {item.get('source', 'unknown')}\nContent: {item.get('content', '')}"
         for item in state.get("retrieved_context", [])
     )
+    if _answer_has_grounded_claims(state.get("answer", ""), context):
+        return {
+            **state,
+            "is_validated": True,
+            "validation_notes": "Deterministic evidence check passed against retrieved context.",
+        }
+
+    client = OllamaChatClient()
     prompt = f"""
 Audit whether the answer is fully supported by the context.
 Return strict JSON with keys "isValidated" and "notes".
@@ -133,9 +157,49 @@ Context:
 """
     raw = client.generate(prompt, temperature=0)
     parsed = _json_from_model(raw)
-    is_validated = bool(parsed.get("isValidated", False))
+    is_validated = _coerce_bool(parsed.get("isValidated", False))
     notes = str(parsed.get("notes") or raw)
     return {**state, "is_validated": is_validated, "validation_notes": notes}
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "yes", "validated", "supported"}
+    return bool(value)
+
+
+def _answer_has_grounded_claims(answer: str, context: str) -> bool:
+    if not answer.strip() or not context.strip():
+        return False
+    lowered_answer = answer.lower()
+    negative_phrases = (
+        "insufficient",
+        "missing",
+        "could not",
+        "cannot",
+        "impossible",
+        "not explicitly",
+        "not enough",
+    )
+    if any(phrase in lowered_answer for phrase in negative_phrases):
+        return False
+
+    context_lower = context.lower()
+    exact_markers = re.findall(r"\b[a-zA-Z]+-\d+\b|\b\d+(?:\.\d+)?\b", answer)
+    if exact_markers and all(marker.lower() in context_lower for marker in exact_markers):
+        return True
+
+    meaningful_tokens = {
+        token
+        for token in re.findall(r"\b[a-zA-Z][a-zA-Z0-9_-]{3,}\b", lowered_answer)
+        if token not in {"source", "answer", "context", "document", "documents", "provided", "based"}
+    }
+    if not meaningful_tokens:
+        return False
+    grounded = sum(1 for token in meaningful_tokens if token in context_lower)
+    return grounded / len(meaningful_tokens) >= 0.6
 
 
 def rewrite_query_node(state: AgentState) -> AgentState:

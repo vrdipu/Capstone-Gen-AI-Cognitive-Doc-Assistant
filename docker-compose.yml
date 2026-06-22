@@ -1,0 +1,25 @@
+services:
+  document-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: capstone-agentic-rag:latest
+    container_name: capstone-agentic-rag
+    ports:
+      - "8501:8501"
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2:3b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      CHROMA_DB_DIR: /app/chroma_db
+      ANONYMIZED_TELEMETRY: "False"
+      CHROMA_TELEMETRY: "False"
+      MAX_GRAPH_RETRIES: ${MAX_GRAPH_RETRIES:-3}
+    volumes:
+      - chroma-data:/app/chroma_db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  chroma-data:
