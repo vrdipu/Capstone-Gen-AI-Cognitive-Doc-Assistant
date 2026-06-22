@@ -3,9 +3,17 @@ from __future__ import annotations
 import json
 import logging
 import re
+import warnings
 from typing import Any, TypedDict
 
 import requests
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"The default value of `allowed_objects` will change in a future version\.",
+    category=Warning,
+)
+
 from langgraph.graph import END, StateGraph
 
 from app.core.config import get_settings

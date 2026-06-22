@@ -18,6 +18,7 @@ FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PYTHONWARNINGS="ignore:The default value of `allowed_objects` will change in a future version" \
     ANONYMIZED_TELEMETRY=False \
     CHROMA_TELEMETRY=False \
     OLLAMA_BASE_URL=http://host.docker.internal:11434 \

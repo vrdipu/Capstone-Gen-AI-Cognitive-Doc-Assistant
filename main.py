@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import warnings
 from contextlib import asynccontextmanager
+
+warnings.filterwarnings(
+    "ignore",
+    message=r".*allowed_objects.*",
+    category=Warning,
+)
+warnings.filterwarnings("ignore", category=Warning, module=r"langgraph\.checkpoint\..*")
 
 import uvicorn
 from fastapi import FastAPI

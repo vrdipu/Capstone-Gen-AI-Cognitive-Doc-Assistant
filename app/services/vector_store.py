@@ -9,6 +9,7 @@ os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 os.environ.setdefault("CHROMA_TELEMETRY", "False")
 
 import chromadb
+import chromadb.telemetry.product.posthog as chroma_posthog
 import requests
 from chromadb.api.models.Collection import Collection
 from chromadb.config import Settings as ChromaSettings
@@ -19,6 +20,17 @@ from app.services.ingestion import ParsedDocument
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _disable_chroma_telemetry() -> None:
+    logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+    chroma_posthog.posthog.disabled = True
+    chroma_posthog.Posthog._direct_capture = lambda self, event: None
+
+
+_disable_chroma_telemetry()
+
+
 class VectorStoreError(RuntimeError):
     """Raised when vector persistence or retrieval fails."""
 

@@ -14,6 +14,7 @@ services:
       CHROMA_PERSIST_DIR: /app/data/vectorstore
       UPLOAD_DIR: /app/data/uploads
       DEBUG: "False"
+      PYTHONWARNINGS: "ignore:The default value of `allowed_objects` will change in a future version"
       ANONYMIZED_TELEMETRY: "False"
       CHROMA_TELEMETRY: "False"
       MAX_GRAPH_RETRIES: ${MAX_GRAPH_RETRIES:-3}
