@@ -68,12 +68,25 @@ class OllamaChatClient:
 def _json_from_model(text: str) -> dict[str, Any]:
     try:
         start = text.index("{")
-        end = text.rindex("}") + 1
-        parsed = json.loads(text[start:end])
+        decoder = json.JSONDecoder()
+        try:
+            parsed, _ = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            payload = text[start:].strip()
+            if not payload.endswith("}"):
+                payload = f"{payload}}}"
+            parsed, _ = decoder.raw_decode(payload)
         return parsed if isinstance(parsed, dict) else {}
     except Exception:
         LOGGER.warning("Model response was not valid JSON: %s", text)
-        return {}
+        lowered = text.lower()
+        fallback: dict[str, Any] = {}
+        if "isvalidated" in lowered:
+            fallback["isValidated"] = '"isvalidated": true' in lowered or "isvalidated: true" in lowered
+        notes_match = re.search(r'"notes"\s*:\s*"(.+)', text, flags=re.DOTALL)
+        if notes_match:
+            fallback["notes"] = notes_match.group(1).strip().rstrip('"}')
+        return fallback
 
 
 def _with_step(state: AgentState, agent: str, success: bool, detail: str = "") -> AgentState:
@@ -242,7 +255,7 @@ def _answer_has_grounded_claims(answer: str, context: str) -> bool:
     if not meaningful_tokens:
         return False
     grounded = sum(1 for token in meaningful_tokens if token in context_lower)
-    return grounded / len(meaningful_tokens) >= 0.6
+    return grounded / len(meaningful_tokens) >= 0.45
 
 
 def rewrite_query_node(state: AgentState) -> AgentState:

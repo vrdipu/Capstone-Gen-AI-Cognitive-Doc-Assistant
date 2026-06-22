@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import requests
 from fastapi import APIRouter, File, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from app.agents.graph import run_document_assistant
 from app.api.models import (
@@ -50,12 +51,12 @@ async def health() -> HealthResponse:
     ollama_status = "unknown"
     vectorstore_status = "unknown"
     try:
-        response = requests.get(f"{settings.ollama_base_url}/api/tags", timeout=3)
+        response = await run_in_threadpool(requests.get, f"{settings.ollama_base_url}/api/tags", timeout=3)
         ollama_status = "healthy" if response.ok else "unhealthy"
     except requests.RequestException:
         ollama_status = "unhealthy"
     try:
-        VectorStoreService().collection.count()
+        await run_in_threadpool(lambda: VectorStoreService().collection.count())
         vectorstore_status = "healthy"
     except Exception:
         vectorstore_status = "unhealthy"
@@ -85,7 +86,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadRespons
     uploaded = BytesIO(data)
     uploaded.name = file.filename or upload_path.name
     document = parse_uploaded_file(uploaded)
-    chunks_created = VectorStoreService().add_document(document)
+    chunks_created = await run_in_threadpool(VectorStoreService().add_document, document)
     return DocumentUploadResponse(
         success=True,
         message="Document uploaded and indexed",
@@ -102,8 +103,8 @@ async def ask_question(request: QuestionRequest) -> AnswerResponse:
         raise AppException(message, status.HTTP_400_BAD_REQUEST)
     started = time.perf_counter()
     vector_store = VectorStoreService()
-    results = vector_store.query(request.question, k=request.top_k)
-    state = run_document_assistant(request.question)
+    results = await run_in_threadpool(vector_store.query, request.question, request.top_k)
+    state = await run_in_threadpool(run_document_assistant, request.question)
     sources = [_source_from_result(result, index) for index, result in enumerate(state.get("retrieved_context") or results)]
     return AnswerResponse(
         answer=state.get("answer") or "No grounded answer was produced.",
@@ -119,7 +120,7 @@ async def ask_agent(request: AgentQuestionRequest) -> AgentAnswerResponse:
     if not valid:
         raise AppException(message, status.HTTP_400_BAD_REQUEST)
     started = time.perf_counter()
-    state = run_document_assistant(request.question)
+    state = await run_in_threadpool(run_document_assistant, request.question)
     sources = [_source_from_result(result, index) for index, result in enumerate(state.get("retrieved_context", []))]
     return AgentAnswerResponse(
         answer=state.get("answer") or "No grounded answer was produced.",
@@ -137,5 +138,5 @@ async def search(request: QuestionRequest) -> SearchResponse:
     valid, message = QuestionValidator.validate(request.question)
     if not valid:
         raise AppException(message, status.HTTP_400_BAD_REQUEST)
-    results = VectorStoreService().query(request.question, k=request.top_k)
+    results = await run_in_threadpool(VectorStoreService().query, request.question, request.top_k)
     return SearchResponse(results=[_source_from_result(result, index) for index, result in enumerate(results)])
