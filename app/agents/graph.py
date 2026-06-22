@@ -5,6 +5,7 @@ import logging
 from typing import Any, TypedDict
 
 import requests
+from langgraph.graph import END, StateGraph
 
 from app.core.config import get_settings
 from app.services.vector_store import VectorStoreService
@@ -135,3 +136,84 @@ Context:
     is_validated = bool(parsed.get("isValidated", False))
     notes = str(parsed.get("notes") or raw)
     return {**state, "is_validated": is_validated, "validation_notes": notes}
+
+
+def rewrite_query_node(state: AgentState) -> AgentState:
+    client = OllamaChatClient()
+    retry_count = int(state.get("retry_count", 0)) + 1
+    prompt = f"""
+Rewrite the vector search query to find stronger evidence for the question.
+Return strict JSON with one key, "search_query".
+
+Original question:
+{state.get("question", "")}
+
+Previous search query:
+{state.get("search_query", "")}
+
+Validation notes:
+{state.get("validation_notes", "")}
+"""
+    raw = client.generate(prompt, temperature=0.2)
+    parsed = _json_from_model(raw)
+    rewritten = str(parsed.get("search_query") or state.get("question", "")).strip()
+    return {**state, "search_query": rewritten, "retry_count": retry_count}
+
+
+def fallback_node(state: AgentState) -> AgentState:
+    notes = state.get("validation_notes", "The answer could not be validated against the retrieved source material.")
+    fallback_answer = (
+        "I could not fully validate a grounded answer after the maximum retrieval attempts. "
+        f"Validation notes: {notes}"
+    )
+    return {**state, "answer": fallback_answer, "is_validated": False}
+
+
+def route_after_validation(state: AgentState) -> str:
+    if state.get("is_validated") is True:
+        return "end"
+    if int(state.get("retry_count", 0)) >= get_settings().max_graph_retries:
+        return "fallback"
+    return "rewrite"
+
+
+def build_graph():
+    graph = StateGraph(AgentState)
+    graph.add_node("planner", planner_node)
+    graph.add_node("retriever", retriever_node)
+    graph.add_node("reasoning", reasoning_node)
+    graph.add_node("validator", validator_node)
+    graph.add_node("rewrite_query", rewrite_query_node)
+    graph.add_node("fallback", fallback_node)
+
+    graph.set_entry_point("planner")
+    graph.add_edge("planner", "retriever")
+    graph.add_edge("retriever", "reasoning")
+    graph.add_edge("reasoning", "validator")
+    graph.add_conditional_edges(
+        "validator",
+        route_after_validation,
+        {"end": END, "rewrite": "rewrite_query", "fallback": "fallback"},
+    )
+    graph.add_edge("rewrite_query", "retriever")
+    graph.add_edge("fallback", END)
+    return graph.compile()
+
+
+def run_document_assistant(question: str) -> AgentState:
+    initial_state: AgentState = {
+        "question": question,
+        "retry_count": 0,
+        "is_validated": False,
+        "retrieved_context": [],
+    }
+    try:
+        return build_graph().invoke(initial_state)
+    except Exception as exc:
+        LOGGER.exception("Document assistant graph failed")
+        return {
+            **initial_state,
+            "answer": f"Assistant graph failed: {exc}",
+            "error": str(exc),
+            "is_validated": False,
+        }
