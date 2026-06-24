@@ -33,7 +33,7 @@ pip install -r requirements.txt
 
 $env:LLM_PROVIDER="gemini"
 $env:GEMINI_API_KEY="your-gemini-api-key"
-$env:GEMINI_MODEL="gemini-2.5-flash"
+$env:GEMINI_MODEL="gemini-2.5-flash-lite"
 $env:GEMINI_API_VERSION="v1"
 $env:GEMINI_GENERATION_MAX_RETRIES="3"
 $env:EMBEDDING_PROVIDER="gemini"
@@ -68,7 +68,7 @@ pip install -r requirements.txt
 
 export LLM_PROVIDER=gemini
 export GEMINI_API_KEY=your-gemini-api-key
-export GEMINI_MODEL=gemini-2.5-flash
+export GEMINI_MODEL=gemini-2.5-flash-lite
 export GEMINI_API_VERSION=v1
 export GEMINI_GENERATION_MAX_RETRIES=3
 export EMBEDDING_PROVIDER=gemini
@@ -103,7 +103,7 @@ pip install -r requirements.txt
 
 export LLM_PROVIDER=gemini
 export GEMINI_API_KEY=your-gemini-api-key
-export GEMINI_MODEL=gemini-2.5-flash
+export GEMINI_MODEL=gemini-2.5-flash-lite
 export GEMINI_API_VERSION=v1
 export GEMINI_GENERATION_MAX_RETRIES=3
 export EMBEDDING_PROVIDER=gemini
