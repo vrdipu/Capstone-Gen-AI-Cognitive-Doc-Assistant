@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 from typing import Any
 
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
@@ -42,7 +43,18 @@ class OllamaEmbeddingClient:
         self.model = settings.ollama_embedding_model
         self.timeout = 90
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    @property
+    def model_name(self) -> str:
+        return self.model
+
+    def status(self) -> str:
+        try:
+            response = requests.get(f"{self.base_url}/api/tags", timeout=3)
+            return "healthy" if response.ok else "unhealthy"
+        except requests.RequestException:
+            return "unhealthy"
+
+    def embed(self, texts: list[str], *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[list[float]]:
         embeddings: list[list[float]] = []
         for text in texts:
             embeddings.append(self._embed_one(text))
@@ -64,19 +76,81 @@ class OllamaEmbeddingClient:
             ) from exc
 
 
+class GeminiEmbeddingClient:
+    def __init__(self) -> None:
+        settings = get_settings()
+        self.api_key = settings.gemini_api_key.strip()
+        self.model = settings.gemini_embedding_model.strip()
+        self.base_url = settings.gemini_api_base_url
+        self.timeout = settings.llm_timeout_seconds
+
+    @property
+    def model_name(self) -> str:
+        return self.model
+
+    def status(self) -> str:
+        return "configured" if self._has_api_key() else "missing_api_key"
+
+    def embed(self, texts: list[str], *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[list[float]]:
+        embeddings: list[list[float]] = []
+        for text in texts:
+            embeddings.append(self._embed_one(text, task_type=task_type))
+        return embeddings
+
+    def _embed_one(self, text: str, *, task_type: str) -> list[float]:
+        if not self._has_api_key():
+            raise VectorStoreError("GEMINI_API_KEY or GOOGLE_API_KEY is required when EMBEDDING_PROVIDER=gemini")
+
+        model_path = self.model if self.model.startswith("models/") else f"models/{self.model}"
+        payload: dict[str, Any] = {
+            "model": model_path,
+            "content": {"parts": [{"text": text}]},
+            "taskType": task_type,
+        }
+        url = f"{self.base_url}/v1beta/{model_path}:embedContent"
+        try:
+            response = requests.post(
+                url,
+                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                json=payload,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            values = (response.json().get("embedding") or {}).get("values")
+            if not isinstance(values, list) or not values:
+                raise VectorStoreError("Gemini returned an empty embedding")
+            return [float(value) for value in values]
+        except requests.RequestException as exc:
+            LOGGER.exception("Gemini embedding request failed")
+            raise VectorStoreError(
+                f"Unable to generate Gemini embeddings with '{self.model}'. "
+                "Check GEMINI_API_KEY and network access."
+            ) from exc
+
+    def _has_api_key(self) -> bool:
+        key = self.api_key.strip()
+        return bool(key and not key.lower().startswith(("replace-", "your-")))
+
+
 class VectorStoreService:
     def __init__(self) -> None:
         settings = get_settings()
+        self.embedding_provider = settings.embedding_provider
+        self.embedding_client = self._build_embedding_client()
+        self.collection_name = self._collection_name(settings.chroma_collection_name, self.embedding_provider, self.embedding_client.model_name)
         settings.vectorstore_path.mkdir(parents=True, exist_ok=True)
         self.client = chromadb.PersistentClient(
             path=str(settings.vectorstore_path),
             settings=ChromaSettings(anonymized_telemetry=False),
         )
         self.collection: Collection = self.client.get_or_create_collection(
-            name=settings.chroma_collection_name,
-            metadata={"hnsw:space": "cosine"},
+            name=self.collection_name,
+            metadata={
+                "hnsw:space": "cosine",
+                "embedding_provider": self.embedding_provider,
+                "embedding_model": self.embedding_client.model_name,
+            },
         )
-        self.embedding_client = OllamaEmbeddingClient()
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
@@ -89,7 +163,7 @@ class VectorStoreService:
             if not chunks:
                 raise VectorStoreError(f"No chunks generated for {document.source_name}")
 
-            embeddings = self.embedding_client.embed(chunks)
+            embeddings = self.embedding_client.embed(chunks, task_type="RETRIEVAL_DOCUMENT")
             ids = [self._chunk_id(document.source_name, index, chunk) for index, chunk in enumerate(chunks)]
             metadatas = [
                 {
@@ -113,8 +187,10 @@ class VectorStoreService:
             if not query_text.strip():
                 raise VectorStoreError("Query text cannot be empty")
             top_k = k or get_settings().top_k_results
-            query_embedding = self.embedding_client.embed([query_text])[0]
+            query_embedding = self.embedding_client.embed([query_text], task_type="RETRIEVAL_QUERY")[0]
             available_count = self.collection.count()
+            if available_count == 0:
+                return []
             n_results = min(max(1, top_k), max(1, available_count))
             results = self.collection.query(
                 query_embeddings=[query_embedding],
@@ -143,3 +219,18 @@ class VectorStoreService:
     def _chunk_id(source_name: str, index: int, chunk: str) -> str:
         digest = hashlib.sha256(f"{source_name}:{index}:{chunk}".encode("utf-8")).hexdigest()
         return f"{source_name}:{index}:{digest[:16]}"
+
+    @staticmethod
+    def _build_embedding_client() -> OllamaEmbeddingClient | GeminiEmbeddingClient:
+        settings = get_settings()
+        if settings.embedding_provider == "gemini":
+            return GeminiEmbeddingClient()
+        return OllamaEmbeddingClient()
+
+    @staticmethod
+    def _collection_name(base_name: str, provider: str, model: str) -> str:
+        if provider == "ollama":
+            return base_name
+        suffix = re.sub(r"[^a-zA-Z0-9_-]+", "_", f"{provider}_{model}").strip("_").lower()
+        name = f"{base_name}_{suffix}"
+        return name[:63].strip("_-") or base_name

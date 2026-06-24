@@ -42,6 +42,8 @@ class Settings(BaseSettings):
         default="https://generativelanguage.googleapis.com",
         alias="GEMINI_API_BASE_URL",
     )
+    embedding_provider: str = Field(default="gemini", alias="EMBEDDING_PROVIDER")
+    gemini_embedding_model: str = Field(default="gemini-embedding-001", alias="GEMINI_EMBEDDING_MODEL")
     ollama_chat_model: str = Field(
         default="llama3.2:3b",
         validation_alias=AliasChoices("OLLAMA_CHAT_MODEL", "OLLAMA_MODEL"),
@@ -74,6 +76,14 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"gemini", "ollama"}:
             raise ValueError("LLM_PROVIDER must be 'gemini' or 'ollama'")
+        return normalized
+
+    @field_validator("embedding_provider")
+    @classmethod
+    def normalize_embedding_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"gemini", "ollama"}:
+            raise ValueError("EMBEDDING_PROVIDER must be 'gemini' or 'ollama'")
         return normalized
 
     @field_validator("gemini_api_base_url")

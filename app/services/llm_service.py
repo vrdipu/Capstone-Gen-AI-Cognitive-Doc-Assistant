@@ -38,7 +38,7 @@ class LLMService:
 
     def status(self) -> str:
         if self.provider == "gemini":
-            return "configured" if self.gemini_api_key else "missing_api_key"
+            return "configured" if self._has_gemini_api_key() else "missing_api_key"
         try:
             response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=3)
             return "healthy" if response.ok else "unhealthy"
@@ -51,7 +51,7 @@ class LLMService:
         return self._generate_ollama(prompt, temperature=temperature)
 
     def _generate_gemini(self, prompt: str, *, temperature: float) -> str:
-        if not self.gemini_api_key:
+        if not self._has_gemini_api_key():
             raise LLMServiceError("GEMINI_API_KEY or GOOGLE_API_KEY is required when LLM_PROVIDER=gemini")
 
         url = f"{self.gemini_api_base_url}/v1beta/models/{self.gemini_model}:generateContent"
@@ -110,3 +110,7 @@ class LLMService:
         parts = ((candidates[0].get("content") or {}).get("parts") or [])
         text_parts = [str(part.get("text", "")) for part in parts if part.get("text")]
         return "\n".join(text_parts)
+
+    def _has_gemini_api_key(self) -> bool:
+        key = self.gemini_api_key.strip()
+        return bool(key and not key.lower().startswith(("replace-", "your-")))

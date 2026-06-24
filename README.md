@@ -1,6 +1,6 @@
 # Capstone-Gen-AI-Cognitive-Doc-Assistant
 
-Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, Gemini 2.5 Flash, Ollama embeddings, and persistent ChromaDB vector search.
+Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, Gemini 2.5 Flash, Gemini embeddings, and persistent ChromaDB vector search.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, Ge
 - `streamlit_app.py`: Streamlit frontend on port `8501`.
 - `app/api/`: Pydantic API models and route handlers.
 - `app/services/ingestion.py`: Robust parsing for PDF, TXT, CSV, XLS, XLSX, DOCX, JSON, YAML, and YML.
-- `app/services/vector_store.py`: ChromaDB persistence with Ollama `nomic-embed-text` embeddings.
+- `app/services/vector_store.py`: ChromaDB persistence with Gemini embeddings by default, plus optional Ollama fallback.
 - `app/services/llm_service.py`: Gemini 2.5 Flash chat LLM facade with optional Ollama chat fallback.
 - `app/services/rag_pipeline.py`: RAG facade over the agent graph.
 - `app/agents/graph.py`: LangGraph planner, retriever, reasoner, validator, retry router, and fallback node.
@@ -18,12 +18,8 @@ Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, Ge
 ## Prerequisites
 
 - Python `3.11` for native local installs.
-- Google Gemini API key for chat generation.
-- Ollama running locally for embeddings with:
-
-```bash
-ollama pull nomic-embed-text
-```
+- Google Gemini API key for chat generation and embeddings.
+- Optional: Ollama only if you set `LLM_PROVIDER=ollama` or `EMBEDDING_PROVIDER=ollama`.
 
 Windows note: Python `3.12` can require Microsoft C++ Build Tools for Chroma native dependencies. Use Python `3.11` or Docker.
 
@@ -35,10 +31,11 @@ py -3.11 -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-$env:OLLAMA_BASE_URL="http://localhost:11434"
 $env:LLM_PROVIDER="gemini"
 $env:GEMINI_API_KEY="your-gemini-api-key"
 $env:GEMINI_MODEL="gemini-2.5-flash"
+$env:EMBEDDING_PROVIDER="gemini"
+$env:GEMINI_EMBEDDING_MODEL="gemini-embedding-001"
 $env:CHROMA_PERSIST_DIR="./data/vectorstore"
 $env:UPLOAD_DIR="./data/uploads"
 
@@ -56,19 +53,18 @@ streamlit run streamlit_app.py
 ## macOS Local Setup
 
 ```bash
-brew install python@3.11 ollama
-ollama serve
-ollama pull nomic-embed-text
+brew install python@3.11
 
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-export OLLAMA_BASE_URL=http://localhost:11434
 export LLM_PROVIDER=gemini
 export GEMINI_API_KEY=your-gemini-api-key
 export GEMINI_MODEL=gemini-2.5-flash
+export EMBEDDING_PROVIDER=gemini
+export GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 export CHROMA_PERSIST_DIR=./data/vectorstore
 export UPLOAD_DIR=./data/uploads
 python main.py
@@ -87,19 +83,17 @@ streamlit run streamlit_app.py
 ```bash
 sudo apt-get update
 sudo apt-get install -y python3.11 python3.11-venv python3-pip curl
-curl -fsSL https://ollama.com/install.sh | sh
-ollama serve
-ollama pull nomic-embed-text
 
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-export OLLAMA_BASE_URL=http://localhost:11434
 export LLM_PROVIDER=gemini
 export GEMINI_API_KEY=your-gemini-api-key
 export GEMINI_MODEL=gemini-2.5-flash
+export EMBEDDING_PROVIDER=gemini
+export GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 export CHROMA_PERSIST_DIR=./data/vectorstore
 export UPLOAD_DIR=./data/uploads
 python main.py
@@ -144,13 +138,13 @@ docker build -t capstone-agentic-rag-frontend:latest -f Dockerfile.streamlit .
 Plain Docker API run on Windows/macOS:
 
 ```powershell
-docker run --rm -p 8000:8000 -e LLM_PROVIDER=gemini -e GEMINI_API_KEY=$env:GEMINI_API_KEY -e GEMINI_MODEL=gemini-2.5-flash -e OLLAMA_BASE_URL=http://host.docker.internal:11434 -v ${PWD}\data:/app/data capstone-agentic-rag:latest
+docker run --rm -p 8000:8000 -e LLM_PROVIDER=gemini -e GEMINI_API_KEY=$env:GEMINI_API_KEY -e GEMINI_MODEL=gemini-2.5-flash -e EMBEDDING_PROVIDER=gemini -e GEMINI_EMBEDDING_MODEL=gemini-embedding-001 -v ${PWD}\data:/app/data capstone-agentic-rag:latest
 ```
 
 Plain Docker API run on Linux:
 
 ```bash
-docker run --rm -p 8000:8000 --add-host=host.docker.internal:host-gateway -e LLM_PROVIDER=gemini -e GEMINI_API_KEY="$GEMINI_API_KEY" -e GEMINI_MODEL=gemini-2.5-flash -e OLLAMA_BASE_URL=http://host.docker.internal:11434 -v "$(pwd)/data:/app/data" capstone-agentic-rag:latest
+docker run --rm -p 8000:8000 --add-host=host.docker.internal:host-gateway -e LLM_PROVIDER=gemini -e GEMINI_API_KEY="$GEMINI_API_KEY" -e GEMINI_MODEL=gemini-2.5-flash -e EMBEDDING_PROVIDER=gemini -e GEMINI_EMBEDDING_MODEL=gemini-embedding-001 -v "$(pwd)/data:/app/data" capstone-agentic-rag:latest
 ```
 
 ## Docker Compose
@@ -174,6 +168,20 @@ Stop:
 
 ```powershell
 docker compose down
+```
+
+## Embedding Provider Notes
+
+The default vector collection uses Gemini embeddings and is stored separately from the previous Ollama embedding collection. After switching providers, upload/index your documents again so ChromaDB contains vectors from the active embedding model.
+
+To use the previous local embedding stack instead:
+
+```powershell
+$env:EMBEDDING_PROVIDER="ollama"
+$env:OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
+ollama serve
+ollama pull nomic-embed-text
+docker compose up --build -d
 ```
 
 ## Kubernetes

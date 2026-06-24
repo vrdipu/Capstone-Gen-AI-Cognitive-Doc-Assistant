@@ -53,18 +53,29 @@ async def health() -> HealthResponse:
     llm_status = llm_service.status()
     ollama_status = "unknown"
     vectorstore_status = "unknown"
+    embedding_provider = settings.embedding_provider
+    embedding_model = settings.gemini_embedding_model if embedding_provider == "gemini" else settings.ollama_embedding_model
+    embedding_status = "unknown"
+    ollama_required = settings.llm_provider == "ollama" or settings.embedding_provider == "ollama"
+    if ollama_required:
+        try:
+            response = await run_in_threadpool(requests.get, f"{settings.ollama_base_url}/api/tags", timeout=3)
+            ollama_status = "healthy" if response.ok else "unhealthy"
+        except requests.RequestException:
+            ollama_status = "unhealthy"
+    else:
+        ollama_status = "not_required"
     try:
-        response = await run_in_threadpool(requests.get, f"{settings.ollama_base_url}/api/tags", timeout=3)
-        ollama_status = "healthy" if response.ok else "unhealthy"
-    except requests.RequestException:
-        ollama_status = "unhealthy"
-    try:
-        await run_in_threadpool(lambda: VectorStoreService().collection.count())
+        vector_store = VectorStoreService()
+        embedding_status = vector_store.embedding_client.status()
+        await run_in_threadpool(lambda: vector_store.collection.count())
         vectorstore_status = "healthy"
     except Exception:
         vectorstore_status = "unhealthy"
     chat_ready = llm_status in {"configured", "healthy"}
-    status_value = "healthy" if chat_ready and ollama_status == "healthy" and vectorstore_status == "healthy" else "degraded"
+    embedding_ready = embedding_status in {"configured", "healthy"}
+    ollama_ready = ollama_status in {"healthy", "not_required"}
+    status_value = "healthy" if chat_ready and embedding_ready and ollama_ready and vectorstore_status == "healthy" else "degraded"
     return HealthResponse(
         status=status_value,
         app_name=settings.app_name,
@@ -73,6 +84,9 @@ async def health() -> HealthResponse:
         llm_provider=settings.llm_provider,
         llm_model=llm_service.model_name,
         llm_status=llm_status,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
+        embedding_status=embedding_status,
         ollama_status=ollama_status,
         vectorstore_status=vectorstore_status,
     )

@@ -56,5 +56,8 @@ class HealthResponse(BaseModel):
     llm_provider: str = "unknown"
     llm_model: str = "unknown"
     llm_status: str = "unknown"
+    embedding_provider: str = "unknown"
+    embedding_model: str = "unknown"
+    embedding_status: str = "unknown"
     ollama_status: str = "unknown"
     vectorstore_status: str = "unknown"
