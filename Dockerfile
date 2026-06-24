@@ -27,6 +27,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     EMBEDDING_PROVIDER=gemini \
     GEMINI_EMBEDDING_MODEL=gemini-embedding-001 \
     GEMINI_EMBEDDING_API_VERSION=v1beta \
+    GEMINI_EMBEDDING_BATCH_SIZE=32 \
     OLLAMA_BASE_URL=http://host.docker.internal:11434 \
     CHROMA_PERSIST_DIR=/app/data/vectorstore \
     UPLOAD_DIR=/app/data/uploads \

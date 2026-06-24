@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     gemini_embedding_api_version: str = Field(default="v1beta", alias="GEMINI_EMBEDDING_API_VERSION")
     embedding_provider: str = Field(default="gemini", alias="EMBEDDING_PROVIDER")
     gemini_embedding_model: str = Field(default="gemini-embedding-001", alias="GEMINI_EMBEDDING_MODEL")
+    gemini_embedding_batch_size: int = Field(default=32, alias="GEMINI_EMBEDDING_BATCH_SIZE", ge=1, le=100)
     ollama_chat_model: str = Field(
         default="llama3.2:3b",
         validation_alias=AliasChoices("OLLAMA_CHAT_MODEL", "OLLAMA_MODEL"),

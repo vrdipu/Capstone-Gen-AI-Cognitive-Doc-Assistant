@@ -38,6 +38,7 @@ $env:GEMINI_API_VERSION="v1"
 $env:EMBEDDING_PROVIDER="gemini"
 $env:GEMINI_EMBEDDING_MODEL="gemini-embedding-001"
 $env:GEMINI_EMBEDDING_API_VERSION="v1beta"
+$env:GEMINI_EMBEDDING_BATCH_SIZE="32"
 $env:CHROMA_PERSIST_DIR="./data/vectorstore"
 $env:UPLOAD_DIR="./data/uploads"
 
@@ -69,6 +70,7 @@ export GEMINI_API_VERSION=v1
 export EMBEDDING_PROVIDER=gemini
 export GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 export GEMINI_EMBEDDING_API_VERSION=v1beta
+export GEMINI_EMBEDDING_BATCH_SIZE=32
 export CHROMA_PERSIST_DIR=./data/vectorstore
 export UPLOAD_DIR=./data/uploads
 python main.py
@@ -100,6 +102,7 @@ export GEMINI_API_VERSION=v1
 export EMBEDDING_PROVIDER=gemini
 export GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 export GEMINI_EMBEDDING_API_VERSION=v1beta
+export GEMINI_EMBEDDING_BATCH_SIZE=32
 export CHROMA_PERSIST_DIR=./data/vectorstore
 export UPLOAD_DIR=./data/uploads
 python main.py

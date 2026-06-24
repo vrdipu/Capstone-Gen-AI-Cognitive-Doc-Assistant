@@ -86,6 +86,7 @@ class GeminiEmbeddingClient:
         self.base_url = settings.gemini_api_base_url
         self.api_version = settings.gemini_embedding_api_version
         self.timeout = settings.llm_timeout_seconds
+        self.batch_size = settings.gemini_embedding_batch_size
 
     @property
     def model_name(self) -> str:
@@ -96,21 +97,28 @@ class GeminiEmbeddingClient:
 
     def embed(self, texts: list[str], *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[list[float]]:
         embeddings: list[list[float]] = []
-        for text in texts:
-            embeddings.append(self._embed_one(text, task_type=task_type))
+        for start in range(0, len(texts), self.batch_size):
+            embeddings.extend(self._embed_batch(texts[start : start + self.batch_size], task_type=task_type))
         return embeddings
 
-    def _embed_one(self, text: str, *, task_type: str) -> list[float]:
+    def _embed_batch(self, texts: list[str], *, task_type: str) -> list[list[float]]:
         if not self._has_api_key():
             raise VectorStoreError("GEMINI_API_KEY or GOOGLE_API_KEY is required when EMBEDDING_PROVIDER=gemini")
+        if not texts:
+            return []
 
         model_path = self.model if self.model.startswith("models/") else f"models/{self.model}"
         payload: dict[str, Any] = {
-            "model": model_path,
-            "content": {"parts": [{"text": text}]},
-            "taskType": task_type,
+            "requests": [
+                {
+                    "model": model_path,
+                    "content": {"parts": [{"text": text}]},
+                    "taskType": task_type,
+                }
+                for text in texts
+            ]
         }
-        url = f"{self.base_url}/{self.api_version}/{model_path}:embedContent"
+        url = f"{self.base_url}/{self.api_version}/{model_path}:batchEmbedContents"
         try:
             response = self._post_with_retries(
                 url,
@@ -119,10 +127,17 @@ class GeminiEmbeddingClient:
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            values = (response.json().get("embedding") or {}).get("values")
-            if not isinstance(values, list) or not values:
-                raise VectorStoreError("Gemini returned an empty embedding")
-            return [float(value) for value in values]
+            embeddings = response.json().get("embeddings")
+            if not isinstance(embeddings, list) or len(embeddings) != len(texts):
+                raise VectorStoreError("Gemini returned an invalid embedding batch")
+
+            vectors: list[list[float]] = []
+            for embedding in embeddings:
+                values = (embedding or {}).get("values")
+                if not isinstance(values, list) or not values:
+                    raise VectorStoreError("Gemini returned an empty embedding")
+                vectors.append([float(value) for value in values])
+            return vectors
         except requests.RequestException as exc:
             LOGGER.exception("Gemini embedding request failed")
             raise VectorStoreError(

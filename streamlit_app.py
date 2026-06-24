@@ -23,6 +23,7 @@ API_BASE_URL_CANDIDATES = tuple(
     )
 )
 MAX_VISIBLE_MESSAGES = 12
+DOCUMENT_INDEX_TIMEOUT_SECONDS = 600
 
 
 def _initialize_state() -> None:
@@ -69,7 +70,7 @@ def _upload_documents(files: list[Any]) -> None:
             response = API_HTTP.post(
                 f"{_api_base_url()}/documents/upload",
                 files={"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)},
-                timeout=120,
+                timeout=DOCUMENT_INDEX_TIMEOUT_SECONDS,
             )
             if response.ok:
                 result = response.json()
