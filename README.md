@@ -1,6 +1,6 @@
 # Capstone-Gen-AI-Cognitive-Doc-Assistant
 
-Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, Gemini 2.5 Flash, Gemini embeddings, and persistent ChromaDB vector search.
+Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, runtime-configurable Gemini chat models, Gemini embeddings, and persistent ChromaDB vector search.
 
 ## Architecture
 
@@ -9,7 +9,7 @@ Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, Ge
 - `app/api/`: Pydantic API models and route handlers.
 - `app/services/ingestion.py`: Robust parsing for PDF, TXT, CSV, XLS, XLSX, DOCX, JSON, YAML, and YML.
 - `app/services/vector_store.py`: ChromaDB persistence with Gemini embeddings by default, plus optional Ollama fallback.
-- `app/services/llm_service.py`: Gemini 2.5 Flash chat LLM facade with optional Ollama chat fallback.
+- `app/services/llm_service.py`: Gemini chat LLM facade with optional Ollama chat fallback.
 - `app/services/rag_pipeline.py`: RAG facade over the agent graph.
 - `app/agents/graph.py`: LangGraph planner, retriever, reasoner, validator, retry router, and fallback node.
 - `app/utils/`: Input validation, rate limiting, and API exception handling.
@@ -153,26 +153,66 @@ docker build -t capstone-agentic-rag:latest -f Dockerfile .
 docker build -t capstone-agentic-rag-frontend:latest -f Dockerfile.streamlit .
 ```
 
-Plain Docker API run on Windows/macOS:
+The Docker images are generic. API keys, chat models, embedding models, and provider choices are supplied when containers start through environment variables. Do not bake real API keys into the image.
+
+Plain Docker API run on Windows PowerShell:
 
 ```powershell
-docker run --rm -p 8000:8000 -e LLM_PROVIDER=gemini -e GEMINI_API_KEY=$env:GEMINI_API_KEY -e GEMINI_MODEL=gemini-2.5-flash -e EMBEDDING_PROVIDER=gemini -e GEMINI_EMBEDDING_MODEL=gemini-embedding-001 -v ${PWD}\data:/app/data capstone-agentic-rag:latest
+$env:GEMINI_API_KEY="your-gemini-api-key"
+docker run --rm -p 8000:8000 `
+  -e LLM_PROVIDER=gemini `
+  -e GEMINI_API_KEY=$env:GEMINI_API_KEY `
+  -e GEMINI_MODEL=gemini-2.5-flash-lite `
+  -e GEMINI_API_VERSION=v1 `
+  -e EMBEDDING_PROVIDER=gemini `
+  -e GEMINI_EMBEDDING_MODEL=gemini-embedding-001 `
+  -e GEMINI_EMBEDDING_API_VERSION=v1beta `
+  -v ${PWD}\data:/app/data `
+  capstone-agentic-rag:latest
 ```
 
 Plain Docker API run on Linux:
 
 ```bash
-docker run --rm -p 8000:8000 --add-host=host.docker.internal:host-gateway -e LLM_PROVIDER=gemini -e GEMINI_API_KEY="$GEMINI_API_KEY" -e GEMINI_MODEL=gemini-2.5-flash -e EMBEDDING_PROVIDER=gemini -e GEMINI_EMBEDDING_MODEL=gemini-embedding-001 -v "$(pwd)/data:/app/data" capstone-agentic-rag:latest
+export GEMINI_API_KEY=your-gemini-api-key
+docker run --rm -p 8000:8000 --add-host=host.docker.internal:host-gateway \
+  -e LLM_PROVIDER=gemini \
+  -e GEMINI_API_KEY="$GEMINI_API_KEY" \
+  -e GEMINI_MODEL=gemini-2.5-flash-lite \
+  -e GEMINI_API_VERSION=v1 \
+  -e EMBEDDING_PROVIDER=gemini \
+  -e GEMINI_EMBEDDING_MODEL=gemini-embedding-001 \
+  -e GEMINI_EMBEDDING_API_VERSION=v1beta \
+  -v "$(pwd)/data:/app/data" \
+  capstone-agentic-rag:latest
 ```
 
 ## Docker Compose
 
 ```powershell
-$env:GEMINI_API_KEY="your-gemini-api-key"
+Copy-Item .env.example .env
+# Edit .env and set GEMINI_API_KEY, GEMINI_MODEL, and any provider/model overrides.
 docker compose up --build -d
 docker compose ps
 docker compose logs -f api
 docker compose logs -f frontend
+```
+
+To reuse already-built images on another machine:
+
+```powershell
+Copy-Item .env.example .env
+# Edit .env for that machine's API key/model values.
+docker compose up -d
+```
+
+You can also override values from the shell without editing compose:
+
+```powershell
+$env:GEMINI_API_KEY="your-gemini-api-key"
+$env:GEMINI_MODEL="gemini-2.5-flash-lite"
+$env:GEMINI_EMBEDDING_MODEL="gemini-embedding-001"
+docker compose up -d
 ```
 
 Open:

@@ -8,10 +8,12 @@ services:
     ports:
       - "8000:8000"
     environment:
+      APP_ENV: ${APP_ENV:-production}
       LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      GEMINI_API_BASE_URL: ${GEMINI_API_BASE_URL:-https://generativelanguage.googleapis.com}
       GEMINI_API_VERSION: ${GEMINI_API_VERSION:-v1}
       GEMINI_GENERATION_MAX_RETRIES: ${GEMINI_GENERATION_MAX_RETRIES:-3}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-gemini}
@@ -26,6 +28,11 @@ services:
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
       CHROMA_PERSIST_DIR: /app/data/vectorstore
       UPLOAD_DIR: /app/data/uploads
+      CHROMA_COLLECTION_NAME: ${CHROMA_COLLECTION_NAME:-documents}
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-10}
+      CHUNK_SIZE: ${CHUNK_SIZE:-1000}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-150}
+      TOP_K_RESULTS: ${TOP_K_RESULTS:-3}
       DEBUG: "False"
       PYTHONWARNINGS: "ignore:The default value of `allowed_objects` will change in a future version"
       ANONYMIZED_TELEMETRY: "False"
@@ -46,7 +53,7 @@ services:
     ports:
       - "8501:8501"
     environment:
-      API_BASE_URL: http://api:8000
+      API_BASE_URL: ${API_BASE_URL:-http://api:8000}
     depends_on:
       api:
         condition: service_healthy
