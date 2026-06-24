@@ -21,6 +21,7 @@ from app.api.models import (
     SourceDocument,
 )
 from app.core.config import get_settings
+from app.services.llm_service import LLMService
 from app.services.ingestion import parse_uploaded_file
 from app.services.vector_store import VectorStoreService
 from app.utils.exceptions import AppException
@@ -48,6 +49,8 @@ def _source_from_result(result: dict, index: int) -> SourceDocument:
 @health_router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     settings = get_settings()
+    llm_service = LLMService()
+    llm_status = llm_service.status()
     ollama_status = "unknown"
     vectorstore_status = "unknown"
     try:
@@ -60,12 +63,16 @@ async def health() -> HealthResponse:
         vectorstore_status = "healthy"
     except Exception:
         vectorstore_status = "unhealthy"
-    status_value = "healthy" if ollama_status == "healthy" and vectorstore_status == "healthy" else "degraded"
+    chat_ready = llm_status in {"configured", "healthy"}
+    status_value = "healthy" if chat_ready and ollama_status == "healthy" and vectorstore_status == "healthy" else "degraded"
     return HealthResponse(
         status=status_value,
         app_name=settings.app_name,
         version="1.0.0",
         environment=settings.app_env,
+        llm_provider=settings.llm_provider,
+        llm_model=llm_service.model_name,
+        llm_status=llm_status,
         ollama_status=ollama_status,
         vectorstore_status=vectorstore_status,
     )

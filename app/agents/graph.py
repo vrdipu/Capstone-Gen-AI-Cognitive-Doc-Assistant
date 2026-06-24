@@ -6,8 +6,6 @@ import re
 import warnings
 from typing import Any, TypedDict
 
-import requests
-
 warnings.filterwarnings(
     "ignore",
     message=r"The default value of `allowed_objects` will change in a future version\.",
@@ -17,6 +15,7 @@ warnings.filterwarnings(
 from langgraph.graph import END, StateGraph
 
 from app.core.config import get_settings
+from app.services.llm_service import LLMService, LLMServiceError
 from app.services.vector_store import VectorStoreService
 
 
@@ -35,34 +34,6 @@ class AgentState(TypedDict, total=False):
     retry_count: int
     agent_steps: list[dict[str, Any]]
     error: str
-
-
-class OllamaChatClient:
-    def __init__(self) -> None:
-        settings = get_settings()
-        self.base_url = settings.ollama_base_url
-        self.model = settings.ollama_chat_model
-        self.timeout = 120
-
-    def generate(self, prompt: str, *, temperature: float = 0.1) -> str:
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": temperature},
-        }
-        try:
-            response = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=self.timeout)
-            response.raise_for_status()
-            text = response.json().get("response", "")
-            if not text.strip():
-                raise RuntimeError("Ollama returned an empty response")
-            return text.strip()
-        except requests.RequestException as exc:
-            raise RuntimeError(
-                f"Unable to reach Ollama chat model at {self.base_url}. "
-                f"Confirm 'ollama serve' is running and '{self.model}' is pulled."
-            ) from exc
 
 
 def _json_from_model(text: str) -> dict[str, Any]:
@@ -98,7 +69,7 @@ def _with_step(state: AgentState, agent: str, success: bool, detail: str = "") -
 
 
 def planner_node(state: AgentState) -> AgentState:
-    client = OllamaChatClient()
+    client = LLMService()
     question = state.get("question", "").strip()
     prompt = f"""
 You are the planner for a document-grounded assistant.
@@ -134,7 +105,7 @@ def reasoning_node(state: AgentState) -> AgentState:
         updated: AgentState = {**state, "reasoning_output": extracted_answer}
         return _with_step(updated, "reasoner", True, "direct evidence extracted")
 
-    client = OllamaChatClient()
+    client = LLMService()
     prompt = f"""
 You are a precise document assistant.
 Answer the question using only the supplied context.
@@ -196,7 +167,7 @@ def validator_node(state: AgentState) -> AgentState:
             "validation_notes": "Deterministic evidence check passed against retrieved context.",
         }
 
-    client = OllamaChatClient()
+    client = LLMService()
     prompt = f"""
 Audit whether the answer is fully supported by the context.
 Return strict JSON with keys "isValidated" and "notes".
@@ -259,7 +230,7 @@ def _answer_has_grounded_claims(answer: str, context: str) -> bool:
 
 
 def rewrite_query_node(state: AgentState) -> AgentState:
-    client = OllamaChatClient()
+    client = LLMService()
     retry_count = int(state.get("retry_count", 0)) + 1
     prompt = f"""
 Rewrite the vector search query to find stronger evidence for the question.
@@ -334,6 +305,14 @@ def run_document_assistant(question: str) -> AgentState:
     }
     try:
         return build_graph().invoke(initial_state)
+    except LLMServiceError as exc:
+        LOGGER.warning("Document assistant LLM generation failed: %s", exc)
+        return {
+            **initial_state,
+            "answer": f"Assistant graph failed: {exc}",
+            "error": str(exc),
+            "is_validated": False,
+        }
     except Exception as exc:
         LOGGER.exception("Document assistant graph failed")
         return {

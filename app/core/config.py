@@ -31,7 +31,17 @@ class Settings(BaseSettings):
     chunk_size: int = Field(default=1000, alias="CHUNK_SIZE", ge=100, le=4000)
     chunk_overlap: int = Field(default=150, alias="CHUNK_OVERLAP", ge=0, le=1000)
     top_k_results: int = Field(default=3, alias="TOP_K_RESULTS", ge=1, le=20)
-    llm_provider: str = Field(default="ollama", alias="LLM_PROVIDER")
+    llm_provider: str = Field(default="gemini", alias="LLM_PROVIDER")
+    gemini_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+        description="Google Gemini API key used when LLM_PROVIDER=gemini.",
+    )
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    gemini_api_base_url: str = Field(
+        default="https://generativelanguage.googleapis.com",
+        alias="GEMINI_API_BASE_URL",
+    )
     ollama_chat_model: str = Field(
         default="llama3.2:3b",
         validation_alias=AliasChoices("OLLAMA_CHAT_MODEL", "OLLAMA_MODEL"),
@@ -40,6 +50,7 @@ class Settings(BaseSettings):
         default="nomic-embed-text",
         validation_alias=AliasChoices("OLLAMA_EMBEDDING_MODEL", "EMBEDDING_MODEL"),
     )
+    llm_timeout_seconds: int = Field(default=180, alias="LLM_TIMEOUT_SECONDS", ge=10, le=600)
     max_graph_retries: int = Field(default=3, alias="MAX_GRAPH_RETRIES", ge=1, le=10)
 
     model_config = SettingsConfigDict(
@@ -55,6 +66,22 @@ class Settings(BaseSettings):
         normalized = value.strip().rstrip("/")
         if not normalized:
             raise ValueError("OLLAMA_BASE_URL cannot be empty")
+        return normalized
+
+    @field_validator("llm_provider")
+    @classmethod
+    def normalize_llm_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"gemini", "ollama"}:
+            raise ValueError("LLM_PROVIDER must be 'gemini' or 'ollama'")
+        return normalized
+
+    @field_validator("gemini_api_base_url")
+    @classmethod
+    def normalize_gemini_url(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        if not normalized:
+            raise ValueError("GEMINI_API_BASE_URL cannot be empty")
         return normalized
 
     @field_validator("chroma_db_dir")

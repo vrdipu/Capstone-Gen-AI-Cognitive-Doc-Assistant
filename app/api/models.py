@@ -53,5 +53,8 @@ class HealthResponse(BaseModel):
     app_name: str
     version: str
     environment: str
+    llm_provider: str = "unknown"
+    llm_model: str = "unknown"
+    llm_status: str = "unknown"
     ollama_status: str = "unknown"
     vectorstore_status: str = "unknown"
