@@ -1,7 +1,6 @@
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.yaml
   - pvc.yaml
   - api-deployment.yaml
   - frontend-deployment.yaml

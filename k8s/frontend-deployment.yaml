@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: capstone-agentic-rag-frontend:latest
+          image: dirajan/capstone-agentic-rag-frontend:v1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8501

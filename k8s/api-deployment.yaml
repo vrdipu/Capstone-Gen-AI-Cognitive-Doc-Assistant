@@ -15,13 +15,15 @@ spec:
     spec:
       containers:
         - name: api
-          image: capstone-agentic-rag:latest
+          image: dirajan/capstone-agentic-rag:v1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           envFrom:
             - configMapRef:
                 name: genai-config
+            - secretRef:
+                name: genai-secrets
           volumeMounts:
             - name: data
               mountPath: /app/data

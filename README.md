@@ -344,17 +344,71 @@ docker compose up --build -d
 
 ## Kubernetes
 
-```bash
-sh scripts/docker-build.sh
-kubectl apply -k k8s/
-kubectl get pods -n genai-assistant
-kubectl get svc -n genai-assistant
+The Kubernetes manifests deploy the released Docker images:
+
+```text
+dirajan/capstone-agentic-rag:v1.0.0
+dirajan/capstone-agentic-rag-frontend:v1.0.0
 ```
 
-The frontend service uses NodePort `30501`.
+Docker Desktop Kubernetes on Windows:
+
+```powershell
+kubectl config use-context docker-desktop
+
+# Optional if local proxy variables interfere with Docker Desktop Kubernetes.
+$env:HTTP_PROXY=""
+$env:HTTPS_PROXY=""
+$env:ALL_PROXY=""
+$env:NO_PROXY="localhost,127.0.0.1,kubernetes.docker.internal"
+
+kubectl apply -f k8s\namespace.yaml
+
+$geminiKey = ((Get-Content .env | Where-Object { $_ -match '^GEMINI_API_KEY=' } | Select-Object -First 1) -split '=', 2)[1]
+kubectl -n genai-assistant create secret generic genai-secrets `
+  --from-literal=GEMINI_API_KEY=$geminiKey `
+  --from-literal=GOOGLE_API_KEY=$geminiKey `
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl apply -k k8s
+kubectl -n genai-assistant rollout status deployment/genai-api
+kubectl -n genai-assistant rollout status deployment/genai-frontend
+kubectl -n genai-assistant get pods,svc,pvc,hpa,ingress
+```
+
+macOS/Linux:
+
+```bash
+kubectl config use-context docker-desktop
+kubectl apply -f k8s/namespace.yaml
+
+GEMINI_API_KEY_VALUE="$(grep '^GEMINI_API_KEY=' .env | head -n 1 | cut -d= -f2-)"
+kubectl -n genai-assistant create secret generic genai-secrets \
+  --from-literal=GEMINI_API_KEY="$GEMINI_API_KEY_VALUE" \
+  --from-literal=GOOGLE_API_KEY="$GEMINI_API_KEY_VALUE" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl apply -k k8s
+kubectl -n genai-assistant rollout status deployment/genai-api
+kubectl -n genai-assistant rollout status deployment/genai-frontend
+kubectl -n genai-assistant get pods,svc,pvc,hpa,ingress
+```
+
+The frontend service uses NodePort `30501`:
+
+```text
+UI: http://localhost:30501
+```
+
+Health checks:
+
+```powershell
+kubectl -n genai-assistant exec deploy/genai-api -- python -c "import requests; print(requests.get('http://localhost:8000/health', timeout=10).text)"
+kubectl -n genai-assistant exec deploy/genai-frontend -- python -c "import requests; print(requests.get('http://api:8000/health', timeout=10).status_code)"
+```
 
 Cleanup:
 
 ```bash
-sh scripts/k8s-cleanup.sh
+kubectl delete namespace genai-assistant
 ```
