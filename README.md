@@ -17,7 +17,8 @@ Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, ru
 
 ## Prerequisites
 
-- Python `3.11` for native local installs.
+- Docker Desktop or Docker Engine with Docker Compose for the recommended deployment path.
+- Python `3.11` only if running the app without Docker.
 - Google Gemini API key for chat generation and embeddings.
 - Optional: Ollama only if you set `LLM_PROVIDER=ollama` or `EMBEDDING_PROVIDER=ollama`.
 
@@ -146,6 +147,90 @@ curl -X POST "http://localhost:8000/agents/ask" \
   -d '{"question":"What is the main topic?","top_k":3,"enable_validation":true}'
 ```
 
+## Docker Deployment From Released Images
+
+The recommended deployment path is Docker Compose with already-published images from Docker Hub.
+
+Released image version:
+
+```text
+API:      dirajan/capstone-agentic-rag:v1.0.0
+Frontend: dirajan/capstone-agentic-rag-frontend:v1.0.0
+```
+
+The images are generic. API keys, chat models, embedding models, and provider choices are supplied at container startup through `.env` or shell environment variables. Do not bake real API keys into the image.
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+Set at least these values in `.env`:
+
+```env
+API_IMAGE_REPOSITORY=dirajan/capstone-agentic-rag
+FRONTEND_IMAGE_REPOSITORY=dirajan/capstone-agentic-rag-frontend
+IMAGE_TAG=v1.0.0
+GEMINI_API_KEY=your-gemini-api-key
+GOOGLE_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+```
+
+Pull and start:
+
+```powershell
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+macOS/Linux:
+
+```bash
+cp .env.example .env
+nano .env
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+Open:
+
+```text
+UI:       http://localhost:8501
+API docs: http://localhost:8000/docs
+Health:   http://localhost:8000/health
+```
+
+Stop:
+
+```bash
+docker compose down
+```
+
+Clear indexed documents and uploaded files:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+Change deployed version:
+
+```env
+IMAGE_TAG=v1.0.0
+```
+
+Then run:
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate
+```
+
 ## Docker Build
 
 ```powershell
@@ -153,7 +238,19 @@ docker build -t capstone-agentic-rag:latest -f Dockerfile .
 docker build -t capstone-agentic-rag-frontend:latest -f Dockerfile.streamlit .
 ```
 
-The Docker images are generic. API keys, chat models, embedding models, and provider choices are supplied when containers start through environment variables. Do not bake real API keys into the image.
+Tag a local build as a release image:
+
+```powershell
+docker tag capstone-agentic-rag:latest dirajan/capstone-agentic-rag:v1.0.0
+docker tag capstone-agentic-rag-frontend:latest dirajan/capstone-agentic-rag-frontend:v1.0.0
+```
+
+Push release images:
+
+```powershell
+docker push dirajan/capstone-agentic-rag:v1.0.0
+docker push dirajan/capstone-agentic-rag-frontend:v1.0.0
+```
 
 Plain Docker API run on Windows PowerShell:
 
@@ -187,7 +284,7 @@ docker run --rm -p 8000:8000 --add-host=host.docker.internal:host-gateway \
   capstone-agentic-rag:latest
 ```
 
-## Docker Compose
+## Docker Compose Quick Reference
 
 ```powershell
 Copy-Item .env.example .env
