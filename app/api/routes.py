@@ -22,8 +22,8 @@ from app.api.models import (
 )
 from app.core.config import get_settings
 from app.services.llm_service import LLMService
-from app.services.ingestion import parse_uploaded_file
-from app.services.vector_store import VectorStoreService
+from app.services.ingestion import DocumentParsingError, parse_uploaded_file
+from app.services.vector_store import VectorStoreError, VectorStoreService
 from app.utils.exceptions import AppException
 from app.utils.validation import FileValidator, QuestionValidator
 
@@ -106,8 +106,14 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadRespons
     upload_path.write_bytes(data)
     uploaded = BytesIO(data)
     uploaded.name = file.filename or upload_path.name
-    document = parse_uploaded_file(uploaded)
-    chunks_created = await run_in_threadpool(VectorStoreService().add_document, document)
+    try:
+        document = parse_uploaded_file(uploaded)
+        chunks_created = await run_in_threadpool(VectorStoreService().add_document, document)
+    except DocumentParsingError as exc:
+        raise AppException(str(exc), status.HTTP_400_BAD_REQUEST) from exc
+    except VectorStoreError as exc:
+        status_code = status.HTTP_429_TOO_MANY_REQUESTS if "quota" in str(exc).lower() else status.HTTP_503_SERVICE_UNAVAILABLE
+        raise AppException(str(exc), status_code) from exc
     return DocumentUploadResponse(
         success=True,
         message="Document uploaded and indexed",

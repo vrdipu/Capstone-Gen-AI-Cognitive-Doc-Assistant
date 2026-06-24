@@ -87,6 +87,8 @@ class GeminiEmbeddingClient:
         self.api_version = settings.gemini_embedding_api_version
         self.timeout = settings.llm_timeout_seconds
         self.batch_size = settings.gemini_embedding_batch_size
+        self.batch_delay_seconds = settings.gemini_embedding_batch_delay_seconds
+        self.max_retries = settings.gemini_embedding_max_retries
 
     @property
     def model_name(self) -> str:
@@ -97,7 +99,10 @@ class GeminiEmbeddingClient:
 
     def embed(self, texts: list[str], *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[list[float]]:
         embeddings: list[list[float]] = []
-        for start in range(0, len(texts), self.batch_size):
+        batches = range(0, len(texts), self.batch_size)
+        for batch_index, start in enumerate(batches):
+            if batch_index and self.batch_delay_seconds:
+                time.sleep(self.batch_delay_seconds)
             embeddings.extend(self._embed_batch(texts[start : start + self.batch_size], task_type=task_type))
         return embeddings
 
@@ -140,6 +145,13 @@ class GeminiEmbeddingClient:
             return vectors
         except requests.RequestException as exc:
             LOGGER.exception("Gemini embedding request failed")
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code == 429:
+                raise VectorStoreError(
+                    "Gemini embedding quota was exceeded while indexing this document. "
+                    "Wait a few minutes and retry, or lower GEMINI_EMBEDDING_BATCH_SIZE / increase "
+                    "GEMINI_EMBEDDING_BATCH_DELAY_SECONDS in .env."
+                ) from exc
             raise VectorStoreError(
                 f"Unable to generate Gemini embeddings with '{self.model}'. "
                 "Check GEMINI_API_KEY and network access."
@@ -151,13 +163,30 @@ class GeminiEmbeddingClient:
 
     def _post_with_retries(self, url: str, **kwargs: Any) -> requests.Response:
         last_response: requests.Response | None = None
-        for attempt in range(3):
+        for attempt in range(self.max_retries):
             response = requests.post(url, **kwargs)
             if response.status_code not in RETRYABLE_STATUS_CODES:
                 return response
             last_response = response
-            time.sleep(1.5 * (attempt + 1))
+            retry_after = self._retry_after_seconds(response)
+            delay_seconds = retry_after if retry_after is not None else min(60.0, 2.0 * (attempt + 1) ** 2)
+            LOGGER.warning(
+                "Gemini embedding request returned %s; retrying in %.1f seconds",
+                response.status_code,
+                delay_seconds,
+            )
+            time.sleep(delay_seconds)
         return last_response or requests.post(url, **kwargs)
+
+    @staticmethod
+    def _retry_after_seconds(response: requests.Response) -> float | None:
+        value = response.headers.get("Retry-After")
+        if not value:
+            return None
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            return None
 
 
 class VectorStoreService:

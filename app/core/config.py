@@ -43,10 +43,18 @@ class Settings(BaseSettings):
         alias="GEMINI_API_BASE_URL",
     )
     gemini_api_version: str = Field(default="v1", alias="GEMINI_API_VERSION")
+    gemini_generation_max_retries: int = Field(default=3, alias="GEMINI_GENERATION_MAX_RETRIES", ge=1, le=10)
     gemini_embedding_api_version: str = Field(default="v1beta", alias="GEMINI_EMBEDDING_API_VERSION")
     embedding_provider: str = Field(default="gemini", alias="EMBEDDING_PROVIDER")
     gemini_embedding_model: str = Field(default="gemini-embedding-001", alias="GEMINI_EMBEDDING_MODEL")
-    gemini_embedding_batch_size: int = Field(default=32, alias="GEMINI_EMBEDDING_BATCH_SIZE", ge=1, le=100)
+    gemini_embedding_batch_size: int = Field(default=8, alias="GEMINI_EMBEDDING_BATCH_SIZE", ge=1, le=100)
+    gemini_embedding_batch_delay_seconds: float = Field(
+        default=2.0,
+        alias="GEMINI_EMBEDDING_BATCH_DELAY_SECONDS",
+        ge=0.0,
+        le=60.0,
+    )
+    gemini_embedding_max_retries: int = Field(default=6, alias="GEMINI_EMBEDDING_MAX_RETRIES", ge=1, le=10)
     ollama_chat_model: str = Field(
         default="llama3.2:3b",
         validation_alias=AliasChoices("OLLAMA_CHAT_MODEL", "OLLAMA_MODEL"),

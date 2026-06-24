@@ -34,6 +34,7 @@ class LLMService:
         self.gemini_model = settings.gemini_model.strip()
         self.gemini_api_base_url = settings.gemini_api_base_url
         self.gemini_api_version = settings.gemini_api_version
+        self.gemini_generation_max_retries = settings.gemini_generation_max_retries
 
     @property
     def model_name(self) -> str:
@@ -79,6 +80,13 @@ class LLMService:
             return text.strip()
         except requests.RequestException as exc:
             LOGGER.exception("Gemini generation failed")
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code in {429, 503}:
+                reason = "quota or rate limit" if status_code == 429 else "temporary model service overload"
+                raise LLMServiceError(
+                    f"Gemini model '{self.gemini_model}' returned HTTP {status_code} ({reason}). "
+                    "Wait a minute and retry the question."
+                ) from exc
             raise LLMServiceError(
                 f"Unable to generate with Gemini model '{self.gemini_model}'. "
                 "Check GEMINI_API_KEY and network access."
@@ -120,10 +128,27 @@ class LLMService:
 
     def _post_with_retries(self, url: str, **kwargs: Any) -> requests.Response:
         last_response: requests.Response | None = None
-        for attempt in range(3):
+        for attempt in range(self.gemini_generation_max_retries):
             response = requests.post(url, **kwargs)
             if response.status_code not in RETRYABLE_STATUS_CODES:
                 return response
             last_response = response
-            time.sleep(1.5 * (attempt + 1))
+            retry_after = self._retry_after_seconds(response)
+            delay_seconds = retry_after if retry_after is not None else min(45.0, 2.0 * (attempt + 1) ** 2)
+            LOGGER.warning(
+                "Gemini generation request returned %s; retrying in %.1f seconds",
+                response.status_code,
+                delay_seconds,
+            )
+            time.sleep(delay_seconds)
         return last_response or requests.post(url, **kwargs)
+
+    @staticmethod
+    def _retry_after_seconds(response: requests.Response) -> float | None:
+        value = response.headers.get("Retry-After")
+        if not value:
+            return None
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            return None

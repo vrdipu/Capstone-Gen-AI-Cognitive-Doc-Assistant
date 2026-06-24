@@ -69,20 +69,9 @@ def _with_step(state: AgentState, agent: str, success: bool, detail: str = "") -
 
 
 def planner_node(state: AgentState) -> AgentState:
-    client = LLMService()
     question = state.get("question", "").strip()
-    prompt = f"""
-You are the planner for a document-grounded assistant.
-Return strict JSON with keys "plan" and "search_query".
-The search_query must be concise and optimized for vector retrieval.
-
-User question:
-{question}
-"""
-    raw = client.generate(prompt)
-    parsed = _json_from_model(raw)
-    search_query = str(parsed.get("search_query") or question).strip()
-    plan = str(parsed.get("plan") or "Retrieve relevant source chunks, answer using only that context, then validate claims.")
+    search_query = _clean_search_query(question)
+    plan = "Retrieve relevant source chunks, answer using only that context, then validate claims."
     updated: AgentState = {**state, "plan": plan, "search_query": search_query}
     return _with_step(updated, "planner", bool(search_query), plan)
 
@@ -167,26 +156,9 @@ def validator_node(state: AgentState) -> AgentState:
             "validation_notes": "Deterministic evidence check passed against retrieved context.",
         }
 
-    client = LLMService()
-    prompt = f"""
-Audit whether the answer is fully supported by the context.
-Return strict JSON with keys "isValidated" and "notes".
-
-Question:
-{state.get("question", "")}
-
-Answer:
-{state.get("answer", "")}
-
-Context:
-{context or "No context retrieved."}
-"""
-    raw = client.generate(prompt, temperature=0)
-    parsed = _json_from_model(raw)
-    is_validated = _coerce_bool(parsed.get("isValidated", False))
-    notes = str(parsed.get("notes") or raw)
-    updated = {**state, "is_validated": is_validated, "validation_notes": notes}
-    return _with_step(updated, "validator", is_validated, notes[:160])
+    notes = "Answer could not be deterministically verified against retrieved context."
+    updated = {**state, "is_validated": False, "validation_notes": notes}
+    return _with_step(updated, "validator", False, notes)
 
 
 def _coerce_bool(value: Any) -> bool:
@@ -230,26 +202,16 @@ def _answer_has_grounded_claims(answer: str, context: str) -> bool:
 
 
 def rewrite_query_node(state: AgentState) -> AgentState:
-    client = LLMService()
     retry_count = int(state.get("retry_count", 0)) + 1
-    prompt = f"""
-Rewrite the vector search query to find stronger evidence for the question.
-Return strict JSON with one key, "search_query".
-
-Original question:
-{state.get("question", "")}
-
-Previous search query:
-{state.get("search_query", "")}
-
-Validation notes:
-{state.get("validation_notes", "")}
-"""
-    raw = client.generate(prompt, temperature=0.2)
-    parsed = _json_from_model(raw)
-    rewritten = str(parsed.get("search_query") or state.get("question", "")).strip()
+    rewritten = _clean_search_query(state.get("question", ""))
     updated = {**state, "search_query": rewritten, "retry_count": retry_count}
     return _with_step(updated, "query_rewriter", bool(rewritten), f"retry {retry_count}")
+
+
+def _clean_search_query(question: str) -> str:
+    cleaned = re.sub(r"\b(what|when|where|who|why|how|is|are|the|a|an|please|tell|me|about)\b", " ", question, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ?.,:")
+    return cleaned or question.strip()
 
 
 def fallback_node(state: AgentState) -> AgentState:
@@ -307,12 +269,25 @@ def run_document_assistant(question: str) -> AgentState:
         return build_graph().invoke(initial_state)
     except LLMServiceError as exc:
         LOGGER.warning("Document assistant LLM generation failed: %s", exc)
-        return {
+        fallback_state: AgentState = {
             **initial_state,
-            "answer": f"Assistant graph failed: {exc}",
+            "answer": (
+                "Gemini is temporarily unavailable, so I could not complete the full agent reasoning flow. "
+                f"Details: {exc}"
+            ),
             "error": str(exc),
             "is_validated": False,
+            "validation_notes": "LLM generation failed before validation could complete.",
         }
+        try:
+            context = VectorStoreService().query(question, k=3)
+            if context:
+                sources = sorted({str(item.get("source", "unknown")) for item in context if item.get("source")})
+                fallback_state["retrieved_context"] = context
+                fallback_state["answer"] += "\n\nRetrieved sources: " + ", ".join(sources)
+        except Exception as context_exc:
+            LOGGER.warning("Fallback context retrieval failed: %s", context_exc)
+        return fallback_state
     except Exception as exc:
         LOGGER.exception("Document assistant graph failed")
         return {
