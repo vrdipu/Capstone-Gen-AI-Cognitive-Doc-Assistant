@@ -1,9 +1,6 @@
 services:
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: capstone-agentic-rag:latest
+    image: ${API_IMAGE_REPOSITORY:-dirajan/capstone-agentic-rag}:${IMAGE_TAG:-v1.0.0}
     container_name: capstone-agentic-rag-api
     ports:
       - "8000:8000"
@@ -45,10 +42,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.streamlit
-    image: capstone-agentic-rag-frontend:latest
+    image: ${FRONTEND_IMAGE_REPOSITORY:-dirajan/capstone-agentic-rag-frontend}:${IMAGE_TAG:-v1.0.0}
     container_name: capstone-agentic-rag-frontend
     ports:
       - "8501:8501"

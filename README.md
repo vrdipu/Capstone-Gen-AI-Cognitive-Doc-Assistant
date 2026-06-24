@@ -191,8 +191,10 @@ docker run --rm -p 8000:8000 --add-host=host.docker.internal:host-gateway \
 
 ```powershell
 Copy-Item .env.example .env
-# Edit .env and set GEMINI_API_KEY, GEMINI_MODEL, and any provider/model overrides.
-docker compose up --build -d
+# Edit .env and set GEMINI_API_KEY plus any model/provider overrides.
+# IMAGE_TAG selects the pushed Docker image version, for example v1.0.0.
+docker compose pull
+docker compose up -d
 docker compose ps
 docker compose logs -f api
 docker compose logs -f frontend
@@ -202,7 +204,7 @@ To reuse already-built images on another machine:
 
 ```powershell
 Copy-Item .env.example .env
-# Edit .env for that machine's API key/model values.
+# Edit .env for that machine's API key/model values and IMAGE_TAG.
 docker compose up -d
 ```
 
@@ -212,6 +214,7 @@ You can also override values from the shell without editing compose:
 $env:GEMINI_API_KEY="your-gemini-api-key"
 $env:GEMINI_MODEL="gemini-2.5-flash-lite"
 $env:GEMINI_EMBEDDING_MODEL="gemini-embedding-001"
+$env:IMAGE_TAG="v1.0.0"
 docker compose up -d
 ```
 
