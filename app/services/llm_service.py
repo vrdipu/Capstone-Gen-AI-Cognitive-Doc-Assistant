@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import requests
@@ -9,6 +10,7 @@ from app.core.config import get_settings
 
 
 LOGGER = logging.getLogger(__name__)
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 class LLMServiceError(RuntimeError):
@@ -31,6 +33,7 @@ class LLMService:
         self.gemini_api_key = settings.gemini_api_key.strip()
         self.gemini_model = settings.gemini_model.strip()
         self.gemini_api_base_url = settings.gemini_api_base_url
+        self.gemini_api_version = settings.gemini_api_version
 
     @property
     def model_name(self) -> str:
@@ -54,7 +57,7 @@ class LLMService:
         if not self._has_gemini_api_key():
             raise LLMServiceError("GEMINI_API_KEY or GOOGLE_API_KEY is required when LLM_PROVIDER=gemini")
 
-        url = f"{self.gemini_api_base_url}/v1beta/models/{self.gemini_model}:generateContent"
+        url = f"{self.gemini_api_base_url}/{self.gemini_api_version}/models/{self.gemini_model}:generateContent"
         payload: dict[str, Any] = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
@@ -63,7 +66,7 @@ class LLMService:
             },
         }
         try:
-            response = requests.post(
+            response = self._post_with_retries(
                 url,
                 headers={"x-goog-api-key": self.gemini_api_key, "Content-Type": "application/json"},
                 json=payload,
@@ -114,3 +117,13 @@ class LLMService:
     def _has_gemini_api_key(self) -> bool:
         key = self.gemini_api_key.strip()
         return bool(key and not key.lower().startswith(("replace-", "your-")))
+
+    def _post_with_retries(self, url: str, **kwargs: Any) -> requests.Response:
+        last_response: requests.Response | None = None
+        for attempt in range(3):
+            response = requests.post(url, **kwargs)
+            if response.status_code not in RETRYABLE_STATUS_CODES:
+                return response
+            last_response = response
+            time.sleep(1.5 * (attempt + 1))
+        return last_response or requests.post(url, **kwargs)

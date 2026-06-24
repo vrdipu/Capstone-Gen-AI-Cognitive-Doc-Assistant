@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import re
+import time
 from typing import Any
 
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
@@ -21,6 +22,7 @@ from app.services.ingestion import ParsedDocument
 
 
 LOGGER = logging.getLogger(__name__)
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 def _disable_chroma_telemetry() -> None:
@@ -82,6 +84,7 @@ class GeminiEmbeddingClient:
         self.api_key = settings.gemini_api_key.strip()
         self.model = settings.gemini_embedding_model.strip()
         self.base_url = settings.gemini_api_base_url
+        self.api_version = settings.gemini_embedding_api_version
         self.timeout = settings.llm_timeout_seconds
 
     @property
@@ -107,9 +110,9 @@ class GeminiEmbeddingClient:
             "content": {"parts": [{"text": text}]},
             "taskType": task_type,
         }
-        url = f"{self.base_url}/v1beta/{model_path}:embedContent"
+        url = f"{self.base_url}/{self.api_version}/{model_path}:embedContent"
         try:
-            response = requests.post(
+            response = self._post_with_retries(
                 url,
                 headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
                 json=payload,
@@ -130,6 +133,16 @@ class GeminiEmbeddingClient:
     def _has_api_key(self) -> bool:
         key = self.api_key.strip()
         return bool(key and not key.lower().startswith(("replace-", "your-")))
+
+    def _post_with_retries(self, url: str, **kwargs: Any) -> requests.Response:
+        last_response: requests.Response | None = None
+        for attempt in range(3):
+            response = requests.post(url, **kwargs)
+            if response.status_code not in RETRYABLE_STATUS_CODES:
+                return response
+            last_response = response
+            time.sleep(1.5 * (attempt + 1))
+        return last_response or requests.post(url, **kwargs)
 
 
 class VectorStoreService:

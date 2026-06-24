@@ -34,8 +34,10 @@ pip install -r requirements.txt
 $env:LLM_PROVIDER="gemini"
 $env:GEMINI_API_KEY="your-gemini-api-key"
 $env:GEMINI_MODEL="gemini-2.5-flash"
+$env:GEMINI_API_VERSION="v1"
 $env:EMBEDDING_PROVIDER="gemini"
 $env:GEMINI_EMBEDDING_MODEL="gemini-embedding-001"
+$env:GEMINI_EMBEDDING_API_VERSION="v1beta"
 $env:CHROMA_PERSIST_DIR="./data/vectorstore"
 $env:UPLOAD_DIR="./data/uploads"
 
@@ -63,8 +65,10 @@ pip install -r requirements.txt
 export LLM_PROVIDER=gemini
 export GEMINI_API_KEY=your-gemini-api-key
 export GEMINI_MODEL=gemini-2.5-flash
+export GEMINI_API_VERSION=v1
 export EMBEDDING_PROVIDER=gemini
 export GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+export GEMINI_EMBEDDING_API_VERSION=v1beta
 export CHROMA_PERSIST_DIR=./data/vectorstore
 export UPLOAD_DIR=./data/uploads
 python main.py
@@ -92,8 +96,10 @@ pip install -r requirements.txt
 export LLM_PROVIDER=gemini
 export GEMINI_API_KEY=your-gemini-api-key
 export GEMINI_MODEL=gemini-2.5-flash
+export GEMINI_API_VERSION=v1
 export EMBEDDING_PROVIDER=gemini
 export GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+export GEMINI_EMBEDDING_API_VERSION=v1beta
 export CHROMA_PERSIST_DIR=./data/vectorstore
 export UPLOAD_DIR=./data/uploads
 python main.py

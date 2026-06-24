@@ -42,6 +42,8 @@ class Settings(BaseSettings):
         default="https://generativelanguage.googleapis.com",
         alias="GEMINI_API_BASE_URL",
     )
+    gemini_api_version: str = Field(default="v1", alias="GEMINI_API_VERSION")
+    gemini_embedding_api_version: str = Field(default="v1beta", alias="GEMINI_EMBEDDING_API_VERSION")
     embedding_provider: str = Field(default="gemini", alias="EMBEDDING_PROVIDER")
     gemini_embedding_model: str = Field(default="gemini-embedding-001", alias="GEMINI_EMBEDDING_MODEL")
     ollama_chat_model: str = Field(
@@ -92,6 +94,14 @@ class Settings(BaseSettings):
         normalized = value.strip().rstrip("/")
         if not normalized:
             raise ValueError("GEMINI_API_BASE_URL cannot be empty")
+        return normalized
+
+    @field_validator("gemini_api_version", "gemini_embedding_api_version")
+    @classmethod
+    def normalize_gemini_api_version(cls, value: str) -> str:
+        normalized = value.strip().strip("/")
+        if normalized not in {"v1", "v1beta"}:
+            raise ValueError("Gemini API version must be 'v1' or 'v1beta'")
         return normalized
 
     @field_validator("chroma_db_dir")
