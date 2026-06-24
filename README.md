@@ -15,6 +15,8 @@ Generative AI-powered document assistant using FastAPI, Streamlit, LangGraph, ru
 - `app/utils/`: Input validation, rate limiting, and API exception handling.
 - `k8s/`: Kubernetes manifests.
 
+See [Architecture Diagrams](docs/architecture-diagrams.md) for the application flow, LangGraph RAG loop, Docker Compose deployment, Kubernetes deployment, and runtime configuration diagrams.
+
 ## Prerequisites
 
 - Docker Desktop or Docker Engine with Docker Compose for the recommended deployment path.
