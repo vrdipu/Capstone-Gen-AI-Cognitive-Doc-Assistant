@@ -235,23 +235,32 @@ docker compose up -d --force-recreate
 
 ## Docker Build
 
+Release images must be published as multi-architecture images so the same tag runs on Windows/Linux `amd64` and Apple Silicon `arm64`.
+
+Windows PowerShell:
+
 ```powershell
-docker build -t capstone-agentic-rag:latest -f Dockerfile .
-docker build -t capstone-agentic-rag-frontend:latest -f Dockerfile.streamlit .
+.\scripts\docker-build-multiarch.ps1 -ImageTag v1.0.0
 ```
 
-Tag a local build as a release image:
+macOS/Linux:
 
-```powershell
-docker tag capstone-agentic-rag:latest dirajan/capstone-agentic-rag:v1.0.0
-docker tag capstone-agentic-rag-frontend:latest dirajan/capstone-agentic-rag-frontend:v1.0.0
+```bash
+IMAGE_TAG=v1.0.0 ./scripts/docker-build.sh
 ```
 
-Push release images:
+The scripts publish both release images for `linux/amd64` and `linux/arm64`:
+
+```text
+dirajan/capstone-agentic-rag:v1.0.0
+dirajan/capstone-agentic-rag-frontend:v1.0.0
+```
+
+Verify the pushed manifests include both platforms:
 
 ```powershell
-docker push dirajan/capstone-agentic-rag:v1.0.0
-docker push dirajan/capstone-agentic-rag-frontend:v1.0.0
+docker buildx imagetools inspect dirajan/capstone-agentic-rag:v1.0.0
+docker buildx imagetools inspect dirajan/capstone-agentic-rag-frontend:v1.0.0
 ```
 
 Plain Docker API run on Windows PowerShell:
